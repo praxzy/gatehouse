@@ -11,8 +11,15 @@ import (
 )
 
 type Querier interface {
+	AssignRoleToMembership(ctx context.Context, arg AssignRoleToMembershipParams) error
+	CreateOwnerMembership(ctx context.Context, arg CreateOwnerMembershipParams) (Membership, error)
+	CreateOwnerRole(ctx context.Context, tenantID pgtype.UUID) (Role, error)
+	CreatePasswordCredential(ctx context.Context, arg CreatePasswordCredentialParams) error
+	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	GetMembershipByID(ctx context.Context, arg GetMembershipByIDParams) (Membership, error)
 	GetMembershipByUserID(ctx context.Context, arg GetMembershipByUserIDParams) (Membership, error)
+	GetPasswordLoginByEmail(ctx context.Context, email string) (GetPasswordLoginByEmailRow, error)
 	GetRoleByID(ctx context.Context, arg GetRoleByIDParams) (Role, error)
 	ListMemberships(ctx context.Context, tenantID pgtype.UUID) ([]Membership, error)
 	ListRolePermissions(ctx context.Context, arg ListRolePermissionsParams) ([]string, error)

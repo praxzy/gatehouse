@@ -24,6 +24,13 @@ type MembershipRole struct {
 	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
 }
 
+type PasswordCredential struct {
+	UserID       pgtype.UUID        `json:"user_id"`
+	PasswordHash string             `json:"password_hash"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Role struct {
 	ID          pgtype.UUID        `json:"id"`
 	TenantID    pgtype.UUID        `json:"tenant_id"`
