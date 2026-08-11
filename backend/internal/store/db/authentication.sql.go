@@ -137,9 +137,18 @@ type CreateTenantParams struct {
 	Slug string `json:"slug"`
 }
 
-func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error) {
+type CreateTenantRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	Slug      string             `json:"slug"`
+	Status    string             `json:"status"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (CreateTenantRow, error) {
 	row := q.db.QueryRow(ctx, createTenant, arg.Name, arg.Slug)
-	var i Tenant
+	var i CreateTenantRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,

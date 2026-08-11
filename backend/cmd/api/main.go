@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -63,7 +65,12 @@ func run() error {
 		return fmt.Errorf("create login limiter: %w", err)
 	}
 
-	authentication, err := auth.NewService(pool, loginLimiter)
+	mfaSecretCipher, err := mfaSecretCipherFromEnvironment()
+	if err != nil {
+		return err
+	}
+
+	authentication, err := auth.NewService(pool, loginLimiter, auth.WithMFASecretCipher(mfaSecretCipher))
 	if err != nil {
 		return fmt.Errorf("create authentication service: %w", err)
 	}
@@ -138,4 +145,39 @@ func sessionCookieSecure() (bool, error) {
 	}
 
 	return secure, nil
+}
+
+func mfaSecretCipherFromEnvironment() (
+	*auth.AESGCMSecretCipher,
+	error,
+) {
+	keyID := strings.TrimSpace(
+		os.Getenv("MFA_ENCRYPTION_KEY_ID"),
+	)
+	encodedKey := strings.TrimSpace(
+		os.Getenv("MFA_ENCRYPTION_KEY_BASE64"),
+	)
+
+	if keyID == "" || encodedKey == "" {
+		return nil, errors.New(
+			"MFA encryption key configuration is required",
+		)
+	}
+
+	key, err := base64.StdEncoding.DecodeString(encodedKey)
+	if err != nil {
+		return nil, errors.New(
+			"MFA_ENCRYPTION_KEY_BASE64 is invalid",
+		)
+	}
+
+	secretCipher, err := auth.NewAESGCMSecretCipher(keyID, key)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"create MFA secret cipher: %w",
+			err,
+		)
+	}
+
+	return secretCipher, nil
 }

@@ -11,12 +11,17 @@ import (
 )
 
 type Querier interface {
+	ActivateTOTPCredential(ctx context.Context, arg ActivateTOTPCredentialParams) (int64, error)
 	AssignRoleToMembership(ctx context.Context, arg AssignRoleToMembershipParams) error
+	ConsumeMFARecoveryCode(ctx context.Context, arg ConsumeMFARecoveryCodeParams) (int64, error)
+	ConsumeTOTPTimeStep(ctx context.Context, arg ConsumeTOTPTimeStepParams) (int64, error)
+	CountAvailableMFARecoveryCodes(ctx context.Context, userID pgtype.UUID) (int64, error)
+	CreateMFARecoveryCode(ctx context.Context, arg CreateMFARecoveryCodeParams) error
 	CreateOwnerMembership(ctx context.Context, arg CreateOwnerMembershipParams) (Membership, error)
 	CreateOwnerRole(ctx context.Context, tenantID pgtype.UUID) (Role, error)
 	CreatePasswordCredential(ctx context.Context, arg CreatePasswordCredentialParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
-	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
+	CreateTenant(ctx context.Context, arg CreateTenantParams) (CreateTenantRow, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	GetActiveMembershipForSessionCreation(ctx context.Context, arg GetActiveMembershipForSessionCreationParams) (GetActiveMembershipForSessionCreationRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)
@@ -24,12 +29,15 @@ type Querier interface {
 	GetMembershipByUserID(ctx context.Context, arg GetMembershipByUserIDParams) (Membership, error)
 	GetPasswordLoginByEmail(ctx context.Context, email string) (GetPasswordLoginByEmailRow, error)
 	GetRoleByID(ctx context.Context, arg GetRoleByIDParams) (Role, error)
+	GetTOTPCredentialForUpdate(ctx context.Context, userID pgtype.UUID) (TotpCredential, error)
 	ListMemberships(ctx context.Context, tenantID pgtype.UUID) ([]Membership, error)
 	ListRolePermissions(ctx context.Context, arg ListRolePermissionsParams) ([]string, error)
 	ListRoles(ctx context.Context, tenantID pgtype.UUID) ([]Role, error)
 	ListRolesForMembership(ctx context.Context, arg ListRolesForMembershipParams) ([]Role, error)
+	RevokePasswordSessionForMFA(ctx context.Context, arg RevokePasswordSessionForMFAParams) (int64, error)
 	RevokeSessionByID(ctx context.Context, arg RevokeSessionByIDParams) (int64, error)
 	RevokeSessionByTokenHash(ctx context.Context, arg RevokeSessionByTokenHashParams) (int64, error)
+	UpsertPendingTOTPCredential(ctx context.Context, arg UpsertPendingTOTPCredentialParams) (TotpCredential, error)
 }
 
 var _ Querier = (*Queries)(nil)

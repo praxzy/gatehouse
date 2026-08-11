@@ -126,7 +126,22 @@ SELECT
     u.email,
     u.display_name,
     t.name AS tenant_name,
-    t.slug AS tenant_slug
+    t.slug AS tenant_slug,
+    (
+        t.mfa_required
+        OR EXISTS (
+            SELECT 1
+            FROM totp_credentials AS active_totp
+            WHERE active_totp.user_id = s.user_id
+              AND active_totp.status = 'active'
+        )
+    )::boolean AS mfa_required,
+    EXISTS (
+        SELECT 1
+        FROM totp_credentials AS active_totp
+        WHERE active_totp.user_id = s.user_id
+          AND active_totp.status = 'active'
+    )::boolean AS mfa_enrolled
 FROM sessions AS s
 JOIN tenants AS t
   ON t.id = s.tenant_id
@@ -156,6 +171,8 @@ type GetActiveSessionByTokenHashRow struct {
 	DisplayName         string             `json:"display_name"`
 	TenantName          string             `json:"tenant_name"`
 	TenantSlug          string             `json:"tenant_slug"`
+	MfaRequired         bool               `json:"mfa_required"`
+	MfaEnrolled         bool               `json:"mfa_enrolled"`
 }
 
 func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error) {
@@ -173,8 +190,44 @@ func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, tokenHash []b
 		&i.DisplayName,
 		&i.TenantName,
 		&i.TenantSlug,
+		&i.MfaRequired,
+		&i.MfaEnrolled,
 	)
 	return i, err
+}
+
+const revokePasswordSessionForMFA = `-- name: RevokePasswordSessionForMFA :execrows
+UPDATE sessions
+SET
+    revoked_at = now(),
+    revocation_reason = 'rotated_after_mfa'
+WHERE tenant_id = $1
+  AND id = $2
+  AND membership_id = $3
+  AND user_id = $4
+  AND authentication_level = 'password'
+  AND revoked_at IS NULL
+  AND expires_at > now()
+`
+
+type RevokePasswordSessionForMFAParams struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	SessionID    pgtype.UUID `json:"session_id"`
+	MembershipID pgtype.UUID `json:"membership_id"`
+	UserID       pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) RevokePasswordSessionForMFA(ctx context.Context, arg RevokePasswordSessionForMFAParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokePasswordSessionForMFA,
+		arg.TenantID,
+		arg.SessionID,
+		arg.MembershipID,
+		arg.UserID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeSessionByID = `-- name: RevokeSessionByID :execrows

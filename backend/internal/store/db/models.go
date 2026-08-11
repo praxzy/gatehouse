@@ -24,6 +24,14 @@ type MembershipRole struct {
 	AssignedAt   pgtype.Timestamptz `json:"assigned_at"`
 }
 
+type MfaRecoveryCode struct {
+	ID         pgtype.UUID        `json:"id"`
+	UserID     pgtype.UUID        `json:"user_id"`
+	CodeHash   []byte             `json:"code_hash"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	ConsumedAt pgtype.Timestamptz `json:"consumed_at"`
+}
+
 type PasswordCredential struct {
 	UserID       pgtype.UUID        `json:"user_id"`
 	PasswordHash string             `json:"password_hash"`
@@ -63,12 +71,25 @@ type Session struct {
 }
 
 type Tenant struct {
-	ID        pgtype.UUID        `json:"id"`
-	Name      string             `json:"name"`
-	Slug      string             `json:"slug"`
-	Status    string             `json:"status"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID          pgtype.UUID        `json:"id"`
+	Name        string             `json:"name"`
+	Slug        string             `json:"slug"`
+	Status      string             `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	MfaRequired bool               `json:"mfa_required"`
+}
+
+type TotpCredential struct {
+	UserID               pgtype.UUID        `json:"user_id"`
+	SecretCiphertext     []byte             `json:"secret_ciphertext"`
+	SecretNonce          []byte             `json:"secret_nonce"`
+	EncryptionKeyID      string             `json:"encryption_key_id"`
+	Status               string             `json:"status"`
+	LastAcceptedTimestep *int64             `json:"last_accepted_timestep"`
+	ConfirmedAt          pgtype.Timestamptz `json:"confirmed_at"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {

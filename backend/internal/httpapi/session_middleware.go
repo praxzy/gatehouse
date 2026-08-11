@@ -71,3 +71,34 @@ func sessionFromContext(
 	session, ok := ctx.Value(sessionContextKey{}).(auth.SessionContext)
 	return session, ok
 }
+
+func requireFullyAuthenticated(
+	next http.Handler,
+) http.Handler {
+	return http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		session, ok := sessionFromContext(request.Context())
+		if !ok {
+			writeError(
+				writer,
+				http.StatusUnauthorized,
+				"authentication required",
+			)
+			return
+		}
+
+		if session.MFARequired &&
+			session.AuthenticationLevel != "mfa" {
+			writeError(
+				writer,
+				http.StatusForbidden,
+				"MFA challenge required",
+			)
+			return
+		}
+
+		next.ServeHTTP(writer, request)
+	})
+}

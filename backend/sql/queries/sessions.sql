@@ -61,7 +61,22 @@ SELECT
     u.email,
     u.display_name,
     t.name AS tenant_name,
-    t.slug AS tenant_slug
+    t.slug AS tenant_slug,
+    (
+        t.mfa_required
+        OR EXISTS (
+            SELECT 1
+            FROM totp_credentials AS active_totp
+            WHERE active_totp.user_id = s.user_id
+              AND active_totp.status = 'active'
+        )
+    )::boolean AS mfa_required,
+    EXISTS (
+        SELECT 1
+        FROM totp_credentials AS active_totp
+        WHERE active_totp.user_id = s.user_id
+          AND active_totp.status = 'active'
+    )::boolean AS mfa_enrolled
 FROM sessions AS s
 JOIN tenants AS t
   ON t.id = s.tenant_id
@@ -96,3 +111,16 @@ SET
     revocation_reason = sqlc.arg(revocation_reason)
 WHERE token_hash = sqlc.arg(token_hash)
   AND revoked_at IS NULL;
+
+-- name: RevokePasswordSessionForMFA :execrows
+UPDATE sessions
+SET
+    revoked_at = now(),
+    revocation_reason = 'rotated_after_mfa'
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND id = sqlc.arg(session_id)
+  AND membership_id = sqlc.arg(membership_id)
+  AND user_id = sqlc.arg(user_id)
+  AND authentication_level = 'password'
+  AND revoked_at IS NULL
+  AND expires_at > now();

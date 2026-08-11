@@ -304,7 +304,7 @@ func newAuthenticationTestService(
 		t.Fatalf("create login rate limiter: %v", err)
 	}
 
-	service, err := auth.NewService(pool, limiter)
+	service, err := auth.NewService(pool, limiter, auth.WithMFASecretCipher(newIntegrationMFASecretCipher(t)))
 	if err != nil {
 		t.Fatalf("create authentication service: %v", err)
 	}

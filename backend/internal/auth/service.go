@@ -13,16 +13,33 @@ var ErrInvalidServiceConfiguration = errors.New(
 	"invalid authentication service configuration",
 )
 
+type ServiceOption func(*Service) error
+
 type Service struct {
 	pool              *pgxpool.Pool
 	queries           *store.Queries
 	loginRateLimiter  LoginRateLimiter
 	dummyPasswordHash string
+	mfaSecretCipher   MFASecretCipher
+}
+
+func WithMFASecretCipher(
+	secretCipher MFASecretCipher,
+) ServiceOption {
+	return func(service *Service) error {
+		if secretCipher == nil {
+			return ErrInvalidServiceConfiguration
+		}
+
+		service.mfaSecretCipher = secretCipher
+		return nil
+	}
 }
 
 func NewService(
 	pool *pgxpool.Pool,
 	loginRateLimiter LoginRateLimiter,
+	options ...ServiceOption,
 ) (*Service, error) {
 	if pool == nil || loginRateLimiter == nil {
 		return nil, ErrInvalidServiceConfiguration
@@ -35,10 +52,22 @@ func NewService(
 		return nil, fmt.Errorf("create dummy password hash: %w", err)
 	}
 
-	return &Service{
+	service := &Service{
 		pool:              pool,
 		queries:           store.New(pool),
 		loginRateLimiter:  loginRateLimiter,
 		dummyPasswordHash: dummyPasswordHash,
-	}, nil
+	}
+
+	for _, option := range options {
+		if option == nil {
+			return nil, ErrInvalidServiceConfiguration
+		}
+
+		if err := option(service); err != nil {
+			return nil, err
+		}
+	}
+
+	return service, nil
 }

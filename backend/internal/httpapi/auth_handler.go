@@ -37,6 +37,29 @@ type AuthenticationService interface {
 		session auth.SessionContext,
 		reason string,
 	) error
+
+	BeginTOTPEnrollment(
+		ctx context.Context,
+		session auth.SessionContext,
+	) (auth.TOTPEnrollmentResult, error)
+
+	ConfirmTOTPEnrollment(
+		ctx context.Context,
+		session auth.SessionContext,
+		code string,
+	) (auth.MFAEnrollmentConfirmation, error)
+
+	CompleteMFAWithTOTP(
+		ctx context.Context,
+		session auth.SessionContext,
+		code string,
+	) (auth.MFAChallengeResult, error)
+
+	CompleteMFAWithRecoveryCode(
+		ctx context.Context,
+		session auth.SessionContext,
+		code string,
+	) (auth.MFAChallengeResult, error)
 }
 
 type authHandler struct {
@@ -66,6 +89,9 @@ type currentUserResponse struct {
 	MembershipID        string `json:"membership_id"`
 	AuthenticationLevel string `json:"authentication_level"`
 	SessionExpiresAt    string `json:"session_expires_at"`
+	MFARequired         bool   `json:"mfa_required"`
+	MFAEnrolled         bool   `json:"mfa_enrolled"`
+	FullyAuthenticated  bool   `json:"fully_authenticated"`
 }
 
 type errorResponse struct {
@@ -195,6 +221,9 @@ func (handler authHandler) currentUser(
 			SessionExpiresAt: session.ExpiresAt.UTC().Format(
 				timeFormat,
 			),
+			MFARequired:        session.MFARequired,
+			MFAEnrolled:        session.MFAEnrolled,
+			FullyAuthenticated: !session.MFARequired || session.AuthenticationLevel == "mfa",
 		},
 	)
 }

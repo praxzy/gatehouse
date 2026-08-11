@@ -38,6 +38,22 @@ func NewRouter(dependencies Dependencies) http.Handler {
 
 				router.Get("/current-user", handler.currentUser)
 				router.Post("/logout", handler.logout)
+				router.Post(
+					"/mfa/enroll",
+					handler.beginTOTPEnrollment,
+				)
+				router.Post(
+					"/mfa/enroll/confirm",
+					handler.confirmTOTPEnrollment,
+				)
+				router.Post(
+					"/mfa/challenge/totp",
+					handler.completeTOTPChallenge,
+				)
+				router.Post(
+					"/mfa/challenge/recovery",
+					handler.completeRecoveryChallenge,
+				)
 			})
 		})
 	}
