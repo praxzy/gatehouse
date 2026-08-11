@@ -7,14 +7,40 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+type Dependencies struct {
+	Authentication AuthenticationService
+	SessionCookie  SessionCookie
+}
+
 type healthResponse struct {
 	Status string `json:"status"`
 }
 
-func NewRouter() http.Handler {
+func NewRouter(dependencies Dependencies) http.Handler {
 	router := chi.NewRouter()
 
 	router.Get("/healthz", healthz)
+
+	if dependencies.Authentication != nil {
+		handler := authHandler{
+			authentication: dependencies.Authentication,
+			sessionCookie:  dependencies.SessionCookie,
+		}
+
+		router.Route("/api/v1/auth", func(router chi.Router) {
+			router.Post("/login", handler.login)
+
+			router.Group(func(router chi.Router) {
+				router.Use(requireSession(
+					dependencies.Authentication,
+					dependencies.SessionCookie,
+				))
+
+				router.Get("/current-user", handler.currentUser)
+				router.Post("/logout", handler.logout)
+			})
+		})
+	}
 
 	return router
 }

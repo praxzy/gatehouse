@@ -15,8 +15,11 @@ type Querier interface {
 	CreateOwnerMembership(ctx context.Context, arg CreateOwnerMembershipParams) (Membership, error)
 	CreateOwnerRole(ctx context.Context, tenantID pgtype.UUID) (Role, error)
 	CreatePasswordCredential(ctx context.Context, arg CreatePasswordCredentialParams) error
+	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	GetActiveMembershipForSessionCreation(ctx context.Context, arg GetActiveMembershipForSessionCreationParams) (GetActiveMembershipForSessionCreationRow, error)
+	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)
 	GetMembershipByID(ctx context.Context, arg GetMembershipByIDParams) (Membership, error)
 	GetMembershipByUserID(ctx context.Context, arg GetMembershipByUserIDParams) (Membership, error)
 	GetPasswordLoginByEmail(ctx context.Context, email string) (GetPasswordLoginByEmailRow, error)
@@ -25,6 +28,8 @@ type Querier interface {
 	ListRolePermissions(ctx context.Context, arg ListRolePermissionsParams) ([]string, error)
 	ListRoles(ctx context.Context, tenantID pgtype.UUID) ([]Role, error)
 	ListRolesForMembership(ctx context.Context, arg ListRolesForMembershipParams) ([]Role, error)
+	RevokeSessionByID(ctx context.Context, arg RevokeSessionByIDParams) (int64, error)
+	RevokeSessionByTokenHash(ctx context.Context, arg RevokeSessionByTokenHashParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

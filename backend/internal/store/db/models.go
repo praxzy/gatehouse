@@ -49,6 +49,19 @@ type RolePermission struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type Session struct {
+	ID                  pgtype.UUID        `json:"id"`
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	MembershipID        pgtype.UUID        `json:"membership_id"`
+	UserID              pgtype.UUID        `json:"user_id"`
+	TokenHash           []byte             `json:"token_hash"`
+	AuthenticationLevel string             `json:"authentication_level"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt           pgtype.Timestamptz `json:"revoked_at"`
+	RevocationReason    *string            `json:"revocation_reason"`
+}
+
 type Tenant struct {
 	ID        pgtype.UUID        `json:"id"`
 	Name      string             `json:"name"`
