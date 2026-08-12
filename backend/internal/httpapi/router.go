@@ -18,6 +18,7 @@ type healthResponse struct {
 
 func NewRouter(dependencies Dependencies) http.Handler {
 	router := chi.NewRouter()
+	router.Use(attachRequestID)
 
 	router.Get("/healthz", healthz)
 
@@ -28,6 +29,7 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		}
 
 		router.Route("/api/v1/auth", func(router chi.Router) {
+			router.Post("/register", handler.register)
 			router.Post("/login", handler.login)
 
 			router.Group(func(router chi.Router) {

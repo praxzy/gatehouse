@@ -22,6 +22,11 @@ const maxAuthenticationBodyBytes = 64 * 1024
 const timeFormat = "2006-01-02T15:04:05Z07:00"
 
 type AuthenticationService interface {
+	Register(
+		ctx context.Context,
+		input auth.RegisterInput,
+	) (auth.RegisterResult, error)
+
 	AuthenticateAndCreateSession(
 		ctx context.Context,
 		input auth.AuthenticateInput,
@@ -67,6 +72,21 @@ type authHandler struct {
 	sessionCookie  SessionCookie
 }
 
+type registerRequest struct {
+	TenantName  string `json:"tenant_name"`
+	TenantSlug  string `json:"tenant_slug"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
+	Password    string `json:"password"`
+}
+
+type registerResponse struct {
+	TenantID     string `json:"tenant_id"`
+	UserID       string `json:"user_id"`
+	MembershipID string `json:"membership_id"`
+	OwnerRoleID  string `json:"owner_role_id"`
+}
+
 type loginRequest struct {
 	TenantSlug string `json:"tenant_slug"`
 	Email      string `json:"email"`
@@ -95,7 +115,80 @@ type currentUserResponse struct {
 }
 
 type errorResponse struct {
-	Error string `json:"error"`
+	Error     string `json:"error"`
+	RequestID string `json:"request_id,omitempty"`
+}
+
+func (handler authHandler) register(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	var body registerRequest
+
+	if err := decodeJSON(writer, request, &body); err != nil {
+		writeError(
+			writer,
+			http.StatusBadRequest,
+			"invalid request",
+		)
+		return
+	}
+
+	result, err := handler.authentication.Register(
+		request.Context(),
+		auth.RegisterInput{
+			TenantName:  body.TenantName,
+			TenantSlug:  body.TenantSlug,
+			Email:       body.Email,
+			DisplayName: body.DisplayName,
+			Password:    body.Password,
+		},
+	)
+
+	switch {
+	case errors.Is(err, auth.ErrInvalidRegistration):
+		writeError(
+			writer,
+			http.StatusBadRequest,
+			"invalid registration",
+		)
+		return
+
+	case errors.Is(err, auth.ErrEmailAlreadyExists):
+		writeError(
+			writer,
+			http.StatusConflict,
+			"email is already registered",
+		)
+		return
+
+	case errors.Is(err, auth.ErrTenantSlugUnavailable):
+		writeError(
+			writer,
+			http.StatusConflict,
+			"tenant slug is unavailable",
+		)
+		return
+
+	case err != nil:
+		writeError(
+			writer,
+			http.StatusInternalServerError,
+			"internal server error",
+		)
+		return
+	}
+
+	writeJSON(
+		writer,
+		http.StatusCreated,
+		registerResponse{
+			TenantID:     formatUUID(result.TenantID),
+			UserID:       formatUUID(result.UserID),
+			MembershipID: formatUUID(result.MembershipID),
+			OwnerRoleID:  formatUUID(result.OwnerRoleID),
+		},
+	)
 }
 
 func (handler authHandler) login(
@@ -330,7 +423,8 @@ func writeError(
 		writer,
 		status,
 		errorResponse{
-			Error: message,
+			Error:     message,
+			RequestID: writer.Header().Get(requestIDHeader),
 		},
 	)
 }
