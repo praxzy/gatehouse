@@ -1,0 +1,92 @@
+import { lazy, Suspense } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { PublicOnlyRoute, RequireFullyAuthenticated, RequireSession } from '@/auth/routeGuards'
+import { Spinner } from '@/components/ui/spinner'
+
+const AuthLayout = lazy(() =>
+  import('./layouts/AuthLayout').then((module) => ({
+    default: module.AuthLayout,
+  })),
+)
+
+const AdminLayout = lazy(() =>
+  import('./layouts/AdminLayout').then((module) => ({
+    default: module.AdminLayout,
+  })),
+)
+
+const LoginPage = lazy(() =>
+  import('./pages/LoginPage').then((module) => ({
+    default: module.LoginPage,
+  })),
+)
+
+const RegisterPage = lazy(() =>
+  import('./pages/RegisterPage').then((module) => ({
+    default: module.RegisterPage,
+  })),
+)
+
+const MFAEnrollmentPage = lazy(() =>
+  import('./pages/MFAEnrollmentPage').then((module) => ({
+    default: module.MFAEnrollmentPage,
+  })),
+)
+
+const MFAChallengePage = lazy(() =>
+  import('./pages/MFAChallengePage').then((module) => ({
+    default: module.MFAChallengePage,
+  })),
+)
+
+const DashboardPage = lazy(() =>
+  import('./pages/DashboardPage').then((module) => ({
+    default: module.DashboardPage,
+  })),
+)
+
+function App() {
+  return (
+    <Suspense fallback={<RouteLoading />}>
+      <Routes>
+        <Route element={<AuthLayout />}>
+          <Route element={<PublicOnlyRoute />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+          </Route>
+
+          <Route element={<RequireSession />}>
+            <Route path="/mfa/enroll" element={<MFAEnrollmentPage />} />
+            <Route path="/mfa/challenge" element={<MFAChallengePage />} />
+          </Route>
+        </Route>
+
+        <Route element={<RequireFullyAuthenticated />}>
+          <Route element={<AdminLayout />}>
+            <Route path="/app" element={<DashboardPage />} />
+          </Route>
+        </Route>
+
+        <Route path="/" element={<Navigate to="/app" replace />} />
+        <Route path="*" element={<Navigate to="/app" replace />} />
+      </Routes>
+    </Suspense>
+  )
+}
+
+function RouteLoading() {
+  return (
+    <main
+      aria-busy="true"
+      aria-live="polite"
+      className="grid min-h-svh place-items-center bg-background"
+    >
+      <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+        <Spinner />
+        Opening Gatehouse
+      </div>
+    </main>
+  )
+}
+
+export default App
