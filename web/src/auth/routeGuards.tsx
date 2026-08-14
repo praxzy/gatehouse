@@ -1,5 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { APIError } from '@/api/client'
+import { APIError, isServiceUnavailableError } from '@/api/client'
+import { ServiceUnavailablePage } from '@/components/ServiceUnavailablePage'
+import { Spinner } from '@/components/ui/spinner'
 import { useCurrentUser } from './currentUser'
 import { authenticatedDestination } from './routing'
 
@@ -13,6 +15,10 @@ export function PublicOnlyRoute() {
   if (currentUser.isError) {
     if (isUnauthenticated(currentUser.error)) {
       return <Outlet />
+    }
+
+    if (isServiceUnavailableError(currentUser.error)) {
+      return <CurrentUserUnavailable currentUser={currentUser} />
     }
 
     throw currentUser.error
@@ -36,6 +42,10 @@ export function RequireSession() {
       return <Navigate to={`/login?return_to=${encodeURIComponent(returnTo)}`} replace />
     }
 
+    if (isServiceUnavailableError(currentUser.error)) {
+      return <CurrentUserUnavailable currentUser={currentUser} />
+    }
+
     throw currentUser.error
   }
 
@@ -57,6 +67,10 @@ export function RequireFullyAuthenticated() {
       return <Navigate to={`/login?return_to=${encodeURIComponent(returnTo)}`} replace />
     }
 
+    if (isServiceUnavailableError(currentUser.error)) {
+      return <CurrentUserUnavailable currentUser={currentUser} />
+    }
+
     throw currentUser.error
   }
 
@@ -73,10 +87,31 @@ function isUnauthenticated(error: unknown) {
   return error instanceof APIError && error.status === 401
 }
 
+function CurrentUserUnavailable({
+  currentUser,
+}: {
+  currentUser: ReturnType<typeof useCurrentUser>
+}) {
+  return (
+    <ServiceUnavailablePage
+      error={currentUser.error}
+      isRetrying={currentUser.isFetching}
+      onRetry={() => void currentUser.refetch()}
+    />
+  )
+}
+
 function AuthenticationLoading() {
   return (
-    <main aria-busy="true" aria-live="polite">
-      <p>Checking your session…</p>
+    <main
+      aria-busy="true"
+      aria-live="polite"
+      className="grid min-h-svh place-items-center bg-background"
+    >
+      <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+        <Spinner />
+        <p>Checking your session…</p>
+      </div>
     </main>
   )
 }

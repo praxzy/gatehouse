@@ -22,6 +22,18 @@ export class APIError extends Error {
   }
 }
 
+export class APIUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super('We couldn\u2019t connect to Gatehouse', { cause })
+
+    this.name = 'APIUnavailableError'
+  }
+}
+
+export function isServiceUnavailableError(error: unknown) {
+  return error instanceof APIUnavailableError || (error instanceof APIError && error.status >= 500)
+}
+
 export function setCSRFToken(token: string | null) {
   csrfToken = token
 }
@@ -42,13 +54,23 @@ export async function apiRequest<T>(path: string, options: APIRequestOptions = {
     headers.set('X-CSRF-Token', csrfToken)
   }
 
-  const response = await fetch(`/api/v1${path}`, {
-    ...requestOptions,
-    method,
-    headers,
-    credentials: 'include',
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  let response: Response
+
+  try {
+    response = await fetch(`/api/v1${path}`, {
+      ...requestOptions,
+      method,
+      headers,
+      credentials: 'include',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error
+    }
+
+    throw new APIUnavailableError(error)
+  }
 
   const responseCSRFToken = response.headers.get('X-CSRF-Token')
   if (responseCSRFToken) {
@@ -85,4 +107,8 @@ export async function apiRequest<T>(path: string, options: APIRequestOptions = {
 
 function isAPIErrorResponse(value: unknown): value is APIErrorResponse {
   return typeof value === 'object' && value !== null
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === 'AbortError'
 }

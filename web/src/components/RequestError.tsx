@@ -1,5 +1,5 @@
 import { CircleAlert } from 'lucide-react'
-import { APIError } from '@/api/client'
+import { APIError, APIUnavailableError } from '@/api/client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ErrorReference } from '@/components/ErrorReference'
 
@@ -13,7 +13,9 @@ export function RequestError({ error }: RequestErrorProps) {
   }
 
   const message =
-    error instanceof APIError ? error.message : 'Something went wrong. Please try again.'
+    error instanceof APIError || error instanceof APIUnavailableError
+      ? error.message
+      : 'Something went wrong. Please try again.'
 
   const requestID = error instanceof APIError ? error.requestId : undefined
 

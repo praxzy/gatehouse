@@ -1,8 +1,11 @@
 import { Component } from 'react'
 import type { ReactNode } from 'react'
+import { RefreshCw, TriangleAlert } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { APIError } from '@/api/client'
+import { Button } from '@/components/ui/button'
 import { ErrorReference } from './ErrorReference'
+import { GatehouseBrand } from './GatehouseBrand'
 
 type AppErrorBoundaryProps = {
   children: ReactNode
@@ -38,22 +41,35 @@ function FatalError({ error }: { error: unknown }) {
   const requestID = error instanceof APIError ? error.requestId : undefined
 
   return (
-    <main className="fatal-error">
-      <div>
-        <p className="eyebrow">Gatehouse Admin</p>
-        <h1>We couldn’t load this page</h1>
-        <p>Try the request again.</p>
+    <main className="grid min-h-svh place-items-center bg-background px-5 py-10">
+      <section className="motion-enter w-full max-w-lg rounded-2xl border border-border/70 bg-card p-6 shadow-[0_24px_80px_-48px_rgba(10,44,31,0.45)] sm:p-8">
+        <GatehouseBrand showDescriptor={false} />
+
+        <div className="mt-10 grid size-11 place-items-center rounded-xl border border-destructive/10 bg-destructive/7 text-destructive">
+          <TriangleAlert className="size-5" aria-hidden="true" />
+        </div>
+
+        <p className="mt-7 font-mono text-[0.67rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+          Application error
+        </p>
+
+        <h1 className="mt-2 font-heading text-3xl leading-tight font-medium tracking-tight text-foreground sm:text-4xl">
+          We couldn’t load this page
+        </h1>
+
+        <p className="mt-4 text-sm leading-6 text-muted-foreground">
+          Something unexpected happened. Reload the page to try again.
+        </p>
 
         <ErrorReference requestId={requestID} />
 
-        <div className="fatal-error-actions">
-          <button type="button" onClick={() => window.location.reload()}>
-            Try again
-          </button>
-
-          <a href="/login">Return to sign in</a>
+        <div className="mt-7">
+          <Button type="button" size="lg" onClick={() => window.location.reload()}>
+            <RefreshCw className="size-4" aria-hidden="true" />
+            Reload page
+          </Button>
         </div>
-      </div>
+      </section>
     </main>
   )
 }

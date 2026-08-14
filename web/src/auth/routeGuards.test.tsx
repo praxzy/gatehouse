@@ -64,4 +64,52 @@ describe('RequireFullyAuthenticated', () => {
 
     expect(screen.queryByText('Login page')).not.toBeInTheDocument()
   })
+
+  it('offers a retry when the current-user service is unavailable', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(authenticatedUser), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }),
+      )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { user } = renderWithProviders(
+      <Routes>
+        <Route element={<RequireFullyAuthenticated />}>
+          <Route path="/app" element={<p>Administration console</p>} />
+        </Route>
+      </Routes>,
+      {
+        route: '/app',
+      },
+    )
+
+    expect(
+      await screen.findByRole(
+        'heading',
+        {
+          name: 'Gatehouse is temporarily unavailable',
+        },
+        {
+          timeout: 3_000,
+        },
+      ),
+    ).toBeInTheDocument()
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByText('Administration console')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
 })
