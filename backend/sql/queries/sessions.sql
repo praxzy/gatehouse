@@ -13,6 +13,7 @@ WHERE m.user_id = sqlc.arg(user_id)
   AND m.status = 'active'
   AND t.status = 'active'
   AND u.status = 'active'
+  AND u.email_verified_at IS NOT NULL
 FOR SHARE OF m, t, u;
 
 
@@ -91,6 +92,7 @@ WHERE s.token_hash = sqlc.arg(token_hash)
   AND s.expires_at > now()
   AND t.status = 'active'
   AND u.status = 'active'
+  AND u.email_verified_at IS NOT NULL
   AND m.status = 'active';
 
 

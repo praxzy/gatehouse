@@ -174,9 +174,18 @@ type CreateUserParams struct {
 	DisplayName string `json:"display_name"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+type CreateUserRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	Email       string             `json:"email"`
+	DisplayName string             `json:"display_name"`
+	Status      string             `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
 	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.DisplayName)
-	var i User
+	var i CreateUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
@@ -193,6 +202,8 @@ SELECT
     u.id AS user_id,
     u.email,
     u.status,
+    (u.email_verified_at IS NOT NULL)::boolean
+        AS email_verified,
     pc.password_hash
 FROM users AS u
 JOIN password_credentials AS pc
@@ -201,10 +212,11 @@ WHERE u.email = $1
 `
 
 type GetPasswordLoginByEmailRow struct {
-	UserID       pgtype.UUID `json:"user_id"`
-	Email        string      `json:"email"`
-	Status       string      `json:"status"`
-	PasswordHash string      `json:"password_hash"`
+	UserID        pgtype.UUID `json:"user_id"`
+	Email         string      `json:"email"`
+	Status        string      `json:"status"`
+	EmailVerified bool        `json:"email_verified"`
+	PasswordHash  string      `json:"password_hash"`
 }
 
 func (q *Queries) GetPasswordLoginByEmail(ctx context.Context, email string) (GetPasswordLoginByEmailRow, error) {
@@ -214,6 +226,7 @@ func (q *Queries) GetPasswordLoginByEmail(ctx context.Context, email string) (Ge
 		&i.UserID,
 		&i.Email,
 		&i.Status,
+		&i.EmailVerified,
 		&i.PasswordHash,
 	)
 	return i, err

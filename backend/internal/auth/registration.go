@@ -62,6 +62,14 @@ func (service *Service) Register(
 		return RegisterResult{}, fmt.Errorf("hash password: %w", err)
 	}
 
+	verificationToken, verificationHash, err := generateEmailVerificationToken()
+	if err != nil {
+		return RegisterResult{}, fmt.Errorf(
+			"generate email verification token: %w",
+			err,
+		)
+	}
+
 	transaction, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return RegisterResult{}, fmt.Errorf(
@@ -118,6 +126,28 @@ func (service *Service) Register(
 		)
 	}
 
+	storedVerification, err :=
+		queries.UpsertEmailVerificationToken(
+			ctx,
+			store.UpsertEmailVerificationTokenParams{
+				UserID:          user.ID,
+				TokenHash:       verificationHash,
+				LifetimeSeconds: emailVerificationLifetimeSeconds,
+			},
+		)
+	if err != nil {
+		return RegisterResult{}, fmt.Errorf(
+			"store email verification token: %w",
+			err,
+		)
+	}
+
+	if !storedVerification.ExpiresAt.Valid {
+		return RegisterResult{}, errors.New(
+			"stored email verification has no expiration",
+		)
+	}
+
 	membership, err := queries.CreateOwnerMembership(
 		ctx,
 		store.CreateOwnerMembershipParams{
@@ -162,12 +192,31 @@ func (service *Service) Register(
 		)
 	}
 
-	return RegisterResult{
+	result := RegisterResult{
 		TenantID:     tenant.ID,
 		UserID:       user.ID,
 		MembershipID: membership.ID,
 		OwnerRoleID:  ownerRole.ID,
-	}, nil
+	}
+
+	delivery := EmailVerificationDelivery{
+		RecipientEmail: user.Email,
+		Token:          verificationToken,
+		ExpiresAt:      storedVerification.ExpiresAt.Time,
+	}
+
+	if err := service.emailVerificationSender.SendEmailVerification(
+		ctx,
+		delivery,
+	); err != nil {
+		return result, fmt.Errorf(
+			"%w: %v",
+			ErrEmailVerificationDelivery,
+			err,
+		)
+	}
+
+	return result, nil
 }
 
 func normalizeRegistration(

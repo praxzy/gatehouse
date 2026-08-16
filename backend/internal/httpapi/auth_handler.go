@@ -43,6 +43,11 @@ type AuthenticationService interface {
 		reason string,
 	) error
 
+	VerifyEmail(
+		ctx context.Context,
+		rawToken string,
+	) (auth.VerifyEmailResult, error)
+
 	BeginTOTPEnrollment(
 		ctx context.Context,
 		session auth.SessionContext,
@@ -91,6 +96,10 @@ type loginRequest struct {
 	TenantSlug string `json:"tenant_slug"`
 	Email      string `json:"email"`
 	Password   string `json:"password"`
+}
+
+type verifyEmailRequest struct {
+	Token string `json:"token"`
 }
 
 type loginResponse struct {
@@ -235,6 +244,17 @@ func (handler authHandler) login(
 		)
 		return
 	}
+	if errors.Is(
+		err,
+		auth.ErrEmailVerificationRequired,
+	) {
+		writeError(
+			writer,
+			http.StatusForbidden,
+			"email verification required",
+		)
+		return
+	}
 
 	var rateLimitError *auth.LoginRateLimitedError
 	if errors.As(err, &rateLimitError) {
@@ -283,6 +303,51 @@ func (handler authHandler) login(
 			),
 		},
 	)
+}
+
+func (handler authHandler) verifyEmail(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	var body verifyEmailRequest
+
+	if err := decodeJSON(writer, request, &body); err != nil {
+		writeError(
+			writer,
+			http.StatusBadRequest,
+			"invalid request",
+		)
+		return
+	}
+
+	_, err := handler.authentication.VerifyEmail(
+		request.Context(),
+		strings.TrimSpace(body.Token),
+	)
+
+	switch {
+	case errors.Is(
+		err,
+		auth.ErrInvalidEmailVerificationToken,
+	):
+		writeError(
+			writer,
+			http.StatusBadRequest,
+			"invalid or expired verification link",
+		)
+		return
+
+	case err != nil:
+		writeError(
+			writer,
+			http.StatusInternalServerError,
+			"internal server error",
+		)
+		return
+	}
+
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func (handler authHandler) currentUser(

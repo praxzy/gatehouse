@@ -30,6 +30,7 @@ func NewRouter(dependencies Dependencies) http.Handler {
 
 		router.Route("/api/v1/auth", func(router chi.Router) {
 			router.Post("/register", handler.register)
+			router.Post("/email/verify", handler.verifyEmail)
 			router.Post("/login", handler.login)
 
 			router.Group(func(router chi.Router) {

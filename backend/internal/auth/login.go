@@ -16,8 +16,13 @@ import (
 
 var (
 	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrLoginRateLimited   = errors.New("login rate limit exceeded")
-	ErrInvalidLoginInput  = errors.New("invalid login input")
+
+	ErrEmailVerificationRequired = errors.New(
+		"email verification required",
+	)
+
+	ErrLoginRateLimited  = errors.New("login rate limit exceeded")
+	ErrInvalidLoginInput = errors.New("invalid login input")
 )
 
 type LoginInput struct {
@@ -114,6 +119,11 @@ func (service *Service) Login(
 
 	if !matches || login.Status != "active" {
 		return LoginResult{}, ErrInvalidCredentials
+	}
+
+	if !login.EmailVerified {
+		return LoginResult{},
+			ErrEmailVerificationRequired
 	}
 
 	return LoginResult{

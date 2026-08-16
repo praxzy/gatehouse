@@ -44,6 +44,13 @@ func TestMFAStateMachineAndAdversarialCases(t *testing.T) {
 		t.Fatalf("register MFA user: %v", err)
 	}
 
+	markTestEmailVerified(
+		t,
+		ctx,
+		pool,
+		registration.UserID,
+	)
+
 	commandTag, err := pool.Exec(
 		ctx,
 		`

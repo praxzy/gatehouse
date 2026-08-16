@@ -22,7 +22,7 @@ type Querier interface {
 	CreatePasswordCredential(ctx context.Context, arg CreatePasswordCredentialParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (CreateTenantRow, error)
-	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	GetActiveMembershipForSessionCreation(ctx context.Context, arg GetActiveMembershipForSessionCreationParams) (GetActiveMembershipForSessionCreationRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)
 	GetMembershipByID(ctx context.Context, arg GetMembershipByIDParams) (Membership, error)
@@ -30,6 +30,7 @@ type Querier interface {
 	GetPasswordLoginByEmail(ctx context.Context, email string) (GetPasswordLoginByEmailRow, error)
 	GetRoleByID(ctx context.Context, arg GetRoleByIDParams) (Role, error)
 	GetTOTPCredentialForUpdate(ctx context.Context, userID pgtype.UUID) (TotpCredential, error)
+	GetUnverifiedUserByEmail(ctx context.Context, email string) (GetUnverifiedUserByEmailRow, error)
 	ListMemberships(ctx context.Context, tenantID pgtype.UUID) ([]Membership, error)
 	ListRolePermissions(ctx context.Context, arg ListRolePermissionsParams) ([]string, error)
 	ListRoles(ctx context.Context, tenantID pgtype.UUID) ([]Role, error)
@@ -37,7 +38,9 @@ type Querier interface {
 	RevokePasswordSessionForMFA(ctx context.Context, arg RevokePasswordSessionForMFAParams) (int64, error)
 	RevokeSessionByID(ctx context.Context, arg RevokeSessionByIDParams) (int64, error)
 	RevokeSessionByTokenHash(ctx context.Context, arg RevokeSessionByTokenHashParams) (int64, error)
+	UpsertEmailVerificationToken(ctx context.Context, arg UpsertEmailVerificationTokenParams) (EmailVerificationToken, error)
 	UpsertPendingTOTPCredential(ctx context.Context, arg UpsertPendingTOTPCredentialParams) (TotpCredential, error)
+	VerifyEmailByTokenHash(ctx context.Context, tokenHash []byte) (VerifyEmailByTokenHashRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -93,6 +93,7 @@ WHERE m.user_id = $1
   AND m.status = 'active'
   AND t.status = 'active'
   AND u.status = 'active'
+  AND u.email_verified_at IS NOT NULL
 FOR SHARE OF m, t, u
 `
 
@@ -156,6 +157,7 @@ WHERE s.token_hash = $1
   AND s.expires_at > now()
   AND t.status = 'active'
   AND u.status = 'active'
+  AND u.email_verified_at IS NOT NULL
   AND m.status = 'active'
 `
 

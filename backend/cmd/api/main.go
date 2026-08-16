@@ -70,9 +70,25 @@ func run() error {
 		return err
 	}
 
-	authentication, err := auth.NewService(pool, loginLimiter, auth.WithMFASecretCipher(mfaSecretCipher))
+	emailVerificationSender, err :=
+		emailVerificationSenderFromEnvironment()
 	if err != nil {
-		return fmt.Errorf("create authentication service: %w", err)
+		return err
+	}
+
+	authentication, err := auth.NewService(
+		pool,
+		loginLimiter,
+		auth.WithMFASecretCipher(mfaSecretCipher),
+		auth.WithEmailVerificationSender(
+			emailVerificationSender,
+		),
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"create authentication service: %w",
+			err,
+		)
 	}
 
 	cookieSecure, err := sessionCookieSecure()

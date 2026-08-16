@@ -77,6 +77,8 @@ SELECT
     u.id AS user_id,
     u.email,
     u.status,
+    (u.email_verified_at IS NOT NULL)::boolean
+        AS email_verified,
     pc.password_hash
 FROM users AS u
 JOIN password_credentials AS pc

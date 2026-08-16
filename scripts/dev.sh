@@ -18,6 +18,8 @@ required_variables=(
     DATABASE_URL
     MFA_ENCRYPTION_KEY_ID
     MFA_ENCRYPTION_KEY_BASE64
+    EMAIL_DELIVERY_MODE
+    WEB_APP_URL
 )
 
 for variable in "${required_variables[@]}"; do

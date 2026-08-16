@@ -7,10 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 )
+
+type discardEmailVerificationSender struct{}
+
+func (discardEmailVerificationSender) SendEmailVerification(
+	_ context.Context,
+	_ auth.EmailVerificationDelivery,
+) error {
+	return nil
+}
 
 func TestRegisterRollsBackOnDuplicateEmailAndTenantSlug(
 	t *testing.T,
@@ -127,6 +137,35 @@ func TestRegisterCreatesOwnerIdentityGraph(t *testing.T) {
 		ctx,
 		pool,
 		`
+		SELECT count(*)
+		FROM users
+		WHERE id = $1
+		  AND email_verified_at IS NULL
+	`,
+		1,
+		result.UserID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+		SELECT count(*)
+		FROM email_verification_tokens
+		WHERE user_id = $1
+		  AND consumed_at IS NULL
+		  AND expires_at > now()
+	`,
+		1,
+		result.UserID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
 			SELECT count(*)
 			FROM password_credentials
 			WHERE user_id = $1
@@ -206,6 +245,41 @@ func TestLoginFailureSemantics(t *testing.T) {
 		t.Fatalf("register login user: %v", err)
 	}
 
+	_, err = service.Login(
+		ctx,
+		auth.LoginInput{
+			Email:    "owner@login.test",
+			Password: "correct horse battery staple",
+			ClientIP: "127.0.0.1",
+		},
+	)
+	if !errors.Is(
+		err,
+		auth.ErrEmailVerificationRequired,
+	) {
+		t.Fatalf(
+			"expected ErrEmailVerificationRequired, got %v",
+			err,
+		)
+	}
+
+	assertInvalidCredentials(
+		t,
+		service,
+		auth.LoginInput{
+			Email:    "owner@login.test",
+			Password: "wrong password",
+			ClientIP: "127.0.0.1",
+		},
+	)
+
+	markTestEmailVerified(
+		t,
+		ctx,
+		pool,
+		registration.UserID,
+	)
+
 	login, err := service.Login(
 		ctx,
 		auth.LoginInput{
@@ -279,6 +353,20 @@ func newAuthenticationTestService(
 ) (*auth.Service, *pgxpool.Pool) {
 	t.Helper()
 
+	return newAuthenticationTestServiceWithEmailSender(
+		t,
+		ctx,
+		discardEmailVerificationSender{},
+	)
+}
+
+func newAuthenticationTestServiceWithEmailSender(
+	t *testing.T,
+	ctx context.Context,
+	sender auth.EmailVerificationSender,
+) (*auth.Service, *pgxpool.Pool) {
+	t.Helper()
+
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -304,7 +392,16 @@ func newAuthenticationTestService(
 		t.Fatalf("create login rate limiter: %v", err)
 	}
 
-	service, err := auth.NewService(pool, limiter, auth.WithMFASecretCipher(newIntegrationMFASecretCipher(t)))
+	service, err := auth.NewService(
+		pool,
+		limiter,
+		auth.WithMFASecretCipher(
+			newIntegrationMFASecretCipher(t),
+		),
+		auth.WithEmailVerificationSender(
+			sender,
+		),
+	)
 	if err != nil {
 		t.Fatalf("create authentication service: %v", err)
 	}
@@ -346,6 +443,10 @@ func assertIdentityTableCounts(
 		{
 			name:  "membership roles",
 			query: `SELECT count(*) FROM membership_roles`,
+		},
+		{
+			name:  "email verification tokens",
+			query: `SELECT count(*) FROM email_verification_tokens`,
 		},
 	}
 
@@ -402,6 +503,38 @@ func assertInvalidCredentials(
 		t.Fatalf(
 			"expected ErrInvalidCredentials, got %v",
 			err,
+		)
+	}
+}
+
+func markTestEmailVerified(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	userID pgtype.UUID,
+) {
+	t.Helper()
+
+	commandTag, err := pool.Exec(
+		ctx,
+		`
+			UPDATE users
+			SET
+				email_verified_at = now(),
+				updated_at = now()
+			WHERE id = $1
+			  AND email_verified_at IS NULL
+		`,
+		userID,
+	)
+	if err != nil {
+		t.Fatalf("mark test email verified: %v", err)
+	}
+
+	if commandTag.RowsAffected() != 1 {
+		t.Fatalf(
+			"expected one verified test user, affected %d",
+			commandTag.RowsAffected(),
 		)
 	}
 }

@@ -23,7 +23,7 @@ func TestHTTPSessionLifecycleAndFixationResistance(t *testing.T) {
 	ctx := context.Background()
 	authentication, pool := newAuthenticationTestService(t, ctx)
 
-	_, err := authentication.Register(
+	registration, err := authentication.Register(
 		ctx,
 		auth.RegisterInput{
 			TenantName:  "Session Company",
@@ -36,6 +36,13 @@ func TestHTTPSessionLifecycleAndFixationResistance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register session user: %v", err)
 	}
+
+	markTestEmailVerified(
+		t,
+		ctx,
+		pool,
+		registration.UserID,
+	)
 
 	router := httpapi.NewRouter(
 		httpapi.Dependencies{
