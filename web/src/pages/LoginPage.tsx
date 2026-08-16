@@ -1,16 +1,15 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, CheckCircle2 } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 import { login } from '@/api/auth'
 import { currentUserQueryKey, currentUserQueryOptions } from '@/auth/currentUser'
 import { authenticatedDestination } from '@/auth/routing'
 import { RequestError } from '@/components/RequestError'
 import { toast } from 'sonner'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -26,7 +25,6 @@ type LoginForm = z.infer<typeof loginSchema>
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const location = useLocation()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const [requestError, setRequestError] = useState<unknown>()
@@ -47,8 +45,6 @@ export function LoginPage() {
       password: '',
     },
   })
-
-  const registered = (location.state as { registered?: boolean } | null)?.registered
 
   const submit = handleSubmit(async (input) => {
     setRequestError(undefined)
@@ -85,15 +81,6 @@ export function LoginPage() {
       </header>
 
       <div className="space-y-5">
-        {registered && (
-          <Alert className="rounded-lg border-primary/20 bg-primary/6 text-primary">
-            <CheckCircle2 aria-hidden="true" />
-            <AlertDescription className="text-primary/90">
-              Your organization is ready. Sign in with the Owner account you just created.
-            </AlertDescription>
-          </Alert>
-        )}
-
         <RequestError error={requestError} />
 
         <form onSubmit={submit} noValidate className="space-y-6">

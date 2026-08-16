@@ -113,3 +113,10 @@ export function completeRecoveryChallenge(recoveryCode: string) {
     },
   })
 }
+
+export function verifyEmail(token: string) {
+  return apiRequest<void>('/auth/email/verify', {
+    method: 'POST',
+    body: { token },
+  })
+}

@@ -1,10 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { ArrowRight, Check, ChevronLeft } from 'lucide-react'
+import { ArrowRight, Check, ChevronLeft, MailCheck } from 'lucide-react'
 import type { SubmitEvent } from 'react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { z } from 'zod'
 import { register as registerAccount } from '@/api/auth'
 import { RequestError } from '@/components/RequestError'
@@ -36,9 +36,14 @@ type RegistrationForm = z.infer<typeof registrationSchema>
 
 type RegistrationStep = 'organization' | 'owner'
 
+type RegistrationCompletion = {
+  email: string
+  tenantSlug: string
+}
+
 export function RegisterPage() {
   const [step, setStep] = useState<RegistrationStep>('organization')
-  const navigate = useNavigate()
+  const [completion, setCompletion] = useState<RegistrationCompletion>()
   const [requestError, setRequestError] = useState<unknown>()
 
   const registrationMutation = useMutation({
@@ -75,14 +80,9 @@ export function RegisterPage() {
         password: form.password,
       })
 
-      const query = new URLSearchParams({
-        tenant_slug: form.tenant_slug,
+      setCompletion({
         email: form.email,
-      })
-
-      navigate(`/login?${query.toString()}`, {
-        replace: true,
-        state: { registered: true },
+        tenantSlug: form.tenant_slug,
       })
     } catch (error) {
       setRequestError(error)
@@ -113,6 +113,10 @@ export function RegisterPage() {
     }
 
     await createOrganization(event)
+  }
+
+  if (completion) {
+    return <RegistrationComplete email={completion.email} tenantSlug={completion.tenantSlug} />
   }
 
   return (
@@ -359,5 +363,45 @@ function RegistrationProgress({ step }: { step: RegistrationStep }) {
         </span>
       </li>
     </ol>
+  )
+}
+
+function RegistrationComplete({ email, tenantSlug }: RegistrationCompletion) {
+  const signInQuery = new URLSearchParams({
+    tenant_slug: tenantSlug,
+    email,
+  })
+
+  return (
+    <div>
+      <div className="mb-6 grid size-11 place-items-center rounded-lg border border-primary/15 bg-primary/8 text-primary">
+        <MailCheck aria-hidden="true" />
+      </div>
+
+      <header className="mb-8">
+        <h1 className="font-heading text-4xl leading-none font-medium tracking-[-0.035em] text-foreground">
+          Check your email
+        </h1>
+
+        <p className="mt-4 max-w-sm text-sm leading-6 text-muted-foreground">
+          We sent a verification link to{' '}
+          <strong className="font-semibold text-foreground">{email}</strong>. Open it to activate
+          your Owner account.
+        </p>
+      </header>
+
+      <div className="mb-6 rounded-lg border border-border bg-card p-4">
+        <p className="text-xs font-medium text-muted-foreground">Organization slug</p>
+        <code className="mt-1 block text-sm font-semibold text-foreground">{tenantSlug}</code>
+      </div>
+
+      <p className="mb-6 text-xs leading-5 text-muted-foreground">
+        The verification link expires in 24 hours.
+      </p>
+
+      <Button asChild variant="outline" size="lg" className="h-11 w-full rounded-lg">
+        <Link to={`/login?${signInQuery.toString()}`}>Sign in after verifying</Link>
+      </Button>
+    </div>
   )
 }

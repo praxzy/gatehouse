@@ -77,6 +77,10 @@ export async function apiRequest<T>(path: string, options: APIRequestOptions = {
     csrfToken = responseCSRFToken
   }
 
+  if (response.status === 204) {
+    return undefined as T
+  }
+
   const text = await response.text()
   let payload: unknown
 

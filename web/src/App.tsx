@@ -27,6 +27,12 @@ const RegisterPage = lazy(() =>
   })),
 )
 
+const VerifyEmailPage = lazy(() =>
+  import('./pages/VerifyEmailPage').then((module) => ({
+    default: module.VerifyEmailPage,
+  })),
+)
+
 const MFAEnrollmentPage = lazy(() =>
   import('./pages/MFAEnrollmentPage').then((module) => ({
     default: module.MFAEnrollmentPage,
@@ -50,6 +56,8 @@ function App() {
     <Suspense fallback={<RouteLoading />}>
       <Routes>
         <Route element={<AuthLayout />}>
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+
           <Route element={<PublicOnlyRoute />}>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
