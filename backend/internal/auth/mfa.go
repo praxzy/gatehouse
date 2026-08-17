@@ -13,6 +13,7 @@ import (
 
 const (
 	totpIssuer               = "Gatehouse"
+	totpEnrollmentLifetime   = 10 * time.Minute
 	defaultRecoveryCodeCount = 10
 )
 
@@ -32,11 +33,15 @@ var (
 	ErrMFAAlreadySatisfied = errors.New(
 		"MFA is already satisfied",
 	)
+	ErrMFAEnrollmentExpired = errors.New(
+		"MFA enrollment expired",
+	)
 )
 
 type TOTPEnrollmentResult struct {
 	ProvisioningURI string
 	ManualKey       string
+	ExpiresAt       time.Time
 }
 
 type MFAEnrollmentConfirmation struct {
@@ -78,13 +83,14 @@ func (service *Service) BeginTOTPEnrollment(
 		return TOTPEnrollmentResult{}, err
 	}
 
-	_, err = service.queries.UpsertPendingTOTPCredential(
+	credential, err := service.queries.UpsertPendingTOTPCredential(
 		ctx,
 		store.UpsertPendingTOTPCredentialParams{
 			UserID:           session.UserID,
 			SecretCiphertext: encrypted.Ciphertext,
 			SecretNonce:      encrypted.Nonce,
 			EncryptionKeyID:  encrypted.KeyID,
+			LifetimeSeconds:  int32(totpEnrollmentLifetime / time.Second),
 		},
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -96,10 +102,16 @@ func (service *Service) BeginTOTPEnrollment(
 			err,
 		)
 	}
+	if !credential.EnrollmentExpiresAt.Valid {
+		return TOTPEnrollmentResult{}, errors.New(
+			"pending MFA enrollment has no expiry",
+		)
+	}
 
 	return TOTPEnrollmentResult{
 		ProvisioningURI: provisioningURI,
 		ManualKey:       totpBase32.EncodeToString(secret),
+		ExpiresAt:       credential.EnrollmentExpiresAt.Time,
 	}, nil
 }
 
@@ -152,6 +164,12 @@ func (service *Service) ConfirmTOTPEnrollment(
 		return MFAEnrollmentConfirmation{}, ErrMFAAlreadyEnrolled
 	}
 
+	if !credential.EnrollmentExpiresAt.Valid ||
+		!credential.EnrollmentExpiresAt.Time.After(time.Now()) {
+		return MFAEnrollmentConfirmation{},
+			ErrMFAEnrollmentExpired
+	}
+
 	secret, err := service.decryptTOTPCredential(credential)
 	if err != nil {
 		return MFAEnrollmentConfirmation{}, err
@@ -181,7 +199,7 @@ func (service *Service) ConfirmTOTPEnrollment(
 	}
 	if affected != 1 {
 		return MFAEnrollmentConfirmation{},
-			ErrMFAEnrollmentNotFound
+			ErrMFAEnrollmentExpired
 	}
 
 	for _, recoveryCode := range recoveryCodes {

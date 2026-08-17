@@ -4,14 +4,16 @@ INSERT INTO totp_credentials (
     secret_ciphertext,
     secret_nonce,
     encryption_key_id,
-    status
+    status,
+    enrollment_expires_at
 )
 VALUES (
     sqlc.arg(user_id),
     sqlc.arg(secret_ciphertext),
     sqlc.arg(secret_nonce),
     sqlc.arg(encryption_key_id),
-    'pending'
+    'pending',
+    now() + sqlc.arg(lifetime_seconds)::integer * interval '1 second'
 )
 ON CONFLICT (user_id)
 DO UPDATE SET
@@ -21,6 +23,7 @@ DO UPDATE SET
     status = 'pending',
     last_accepted_timestep = NULL,
     confirmed_at = NULL,
+    enrollment_expires_at = EXCLUDED.enrollment_expires_at,
     updated_at = now()
 WHERE totp_credentials.status = 'pending'
 RETURNING
@@ -32,7 +35,8 @@ RETURNING
     last_accepted_timestep,
     confirmed_at,
     created_at,
-    updated_at;
+    updated_at,
+    enrollment_expires_at;
 
 
 -- name: GetTOTPCredentialForUpdate :one
@@ -45,7 +49,8 @@ SELECT
     last_accepted_timestep,
     confirmed_at,
     created_at,
-    updated_at
+    updated_at,
+    enrollment_expires_at
 FROM totp_credentials
 WHERE user_id = sqlc.arg(user_id)
 FOR UPDATE;
@@ -55,11 +60,14 @@ FOR UPDATE;
 UPDATE totp_credentials
 SET
     status = 'active',
-    last_accepted_timestep = sqlc.arg(accepted_timestep)::bigint,
+    last_accepted_timestep =
+        sqlc.arg(accepted_timestep)::bigint,
     confirmed_at = now(),
+    enrollment_expires_at = NULL,
     updated_at = now()
 WHERE user_id = sqlc.arg(user_id)
-  AND status = 'pending';
+  AND status = 'pending'
+  AND enrollment_expires_at > now();
 
 
 -- name: ConsumeTOTPTimeStep :execrows

@@ -15,11 +15,14 @@ const activateTOTPCredential = `-- name: ActivateTOTPCredential :execrows
 UPDATE totp_credentials
 SET
     status = 'active',
-    last_accepted_timestep = $1::bigint,
+    last_accepted_timestep =
+        $1::bigint,
     confirmed_at = now(),
+    enrollment_expires_at = NULL,
     updated_at = now()
 WHERE user_id = $2
   AND status = 'pending'
+  AND enrollment_expires_at > now()
 `
 
 type ActivateTOTPCredentialParams struct {
@@ -124,7 +127,8 @@ SELECT
     last_accepted_timestep,
     confirmed_at,
     created_at,
-    updated_at
+    updated_at,
+    enrollment_expires_at
 FROM totp_credentials
 WHERE user_id = $1
 FOR UPDATE
@@ -143,6 +147,7 @@ func (q *Queries) GetTOTPCredentialForUpdate(ctx context.Context, userID pgtype.
 		&i.ConfirmedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnrollmentExpiresAt,
 	)
 	return i, err
 }
@@ -153,14 +158,16 @@ INSERT INTO totp_credentials (
     secret_ciphertext,
     secret_nonce,
     encryption_key_id,
-    status
+    status,
+    enrollment_expires_at
 )
 VALUES (
     $1,
     $2,
     $3,
     $4,
-    'pending'
+    'pending',
+    now() + $5::integer * interval '1 second'
 )
 ON CONFLICT (user_id)
 DO UPDATE SET
@@ -170,6 +177,7 @@ DO UPDATE SET
     status = 'pending',
     last_accepted_timestep = NULL,
     confirmed_at = NULL,
+    enrollment_expires_at = EXCLUDED.enrollment_expires_at,
     updated_at = now()
 WHERE totp_credentials.status = 'pending'
 RETURNING
@@ -181,7 +189,8 @@ RETURNING
     last_accepted_timestep,
     confirmed_at,
     created_at,
-    updated_at
+    updated_at,
+    enrollment_expires_at
 `
 
 type UpsertPendingTOTPCredentialParams struct {
@@ -189,6 +198,7 @@ type UpsertPendingTOTPCredentialParams struct {
 	SecretCiphertext []byte      `json:"secret_ciphertext"`
 	SecretNonce      []byte      `json:"secret_nonce"`
 	EncryptionKeyID  string      `json:"encryption_key_id"`
+	LifetimeSeconds  int32       `json:"lifetime_seconds"`
 }
 
 func (q *Queries) UpsertPendingTOTPCredential(ctx context.Context, arg UpsertPendingTOTPCredentialParams) (TotpCredential, error) {
@@ -197,6 +207,7 @@ func (q *Queries) UpsertPendingTOTPCredential(ctx context.Context, arg UpsertPen
 		arg.SecretCiphertext,
 		arg.SecretNonce,
 		arg.EncryptionKeyID,
+		arg.LifetimeSeconds,
 	)
 	var i TotpCredential
 	err := row.Scan(
@@ -209,6 +220,7 @@ func (q *Queries) UpsertPendingTOTPCredential(ctx context.Context, arg UpsertPen
 		&i.ConfirmedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EnrollmentExpiresAt,
 	)
 	return i, err
 }

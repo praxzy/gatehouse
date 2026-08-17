@@ -26,6 +26,12 @@ type mfaCurrentUserState struct {
 	FullyAuthenticated  bool   `json:"fully_authenticated"`
 }
 
+type mfaEnrollmentResponse struct {
+	ProvisioningURI string    `json:"provisioning_uri"`
+	ManualKey       string    `json:"manual_key"`
+	ExpiresAt       time.Time `json:"expires_at"`
+}
+
 func TestMFAStateMachineAndAdversarialCases(t *testing.T) {
 	ctx := context.Background()
 	authentication, pool := newAuthenticationTestService(t, ctx)
@@ -103,15 +109,22 @@ func TestMFAStateMachineAndAdversarialCases(t *testing.T) {
 		http.StatusOK,
 	)
 
-	var enrollment struct {
-		ProvisioningURI string `json:"provisioning_uri"`
-		ManualKey       string `json:"manual_key"`
-	}
+	var enrollment mfaEnrollmentResponse
 	if err := json.Unmarshal(enrollmentBody, &enrollment); err != nil {
 		t.Fatalf("decode enrollment response: %v", err)
 	}
 
 	secret := decodeEnrollmentSecret(t, enrollment)
+	if !enrollment.ExpiresAt.After(time.Now()) {
+		t.Fatal("expected enrollment expiry to be in the future")
+	}
+
+	if enrollment.ExpiresAt.After(time.Now().Add(11 * time.Minute)) {
+		t.Fatalf(
+			"enrollment expiry is unexpectedly distant: %s",
+			enrollment.ExpiresAt,
+		)
+	}
 	assertEncryptedTOTPSecret(
 		t,
 		ctx,
@@ -121,6 +134,96 @@ func TestMFAStateMachineAndAdversarialCases(t *testing.T) {
 	)
 	assertTOTPCredentialStatus(t, ctx, pool, "pending")
 	assertAvailableRecoveryCodes(t, ctx, pool, 0)
+
+	expiredCode, err := auth.GenerateTOTPCode(
+		secret,
+		time.Now(),
+	)
+	if err != nil {
+		t.Fatalf("generate expired enrollment code: %v", err)
+	}
+
+	commandTag, err = pool.Exec(
+		ctx,
+		`
+		UPDATE totp_credentials
+		SET
+			updated_at = now() - interval '2 seconds',
+			enrollment_expires_at = now() - interval '1 second'
+		WHERE user_id = $1
+		  AND status = 'pending'
+	`,
+		registration.UserID,
+	)
+	if err != nil {
+		t.Fatalf("expire pending TOTP enrollment: %v", err)
+	}
+	if commandTag.RowsAffected() != 1 {
+		t.Fatal("expected one expired pending TOTP enrollment")
+	}
+
+	expiredConfirmation := performMFAJSONRequest(
+		t,
+		router,
+		"/api/v1/auth/mfa/enroll/confirm",
+		map[string]string{"code": expiredCode},
+		passwordCookie,
+	)
+	requireResponseStatus(
+		t,
+		expiredConfirmation,
+		http.StatusGone,
+	)
+
+	assertTOTPCredentialStatus(t, ctx, pool, "pending")
+	assertAvailableRecoveryCodes(t, ctx, pool, 0)
+
+	refreshedEnrollmentResponse := performRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/api/v1/auth/mfa/enroll",
+		nil,
+		passwordCookie,
+	)
+
+	refreshedEnrollmentBody := requireResponseStatus(
+		t,
+		refreshedEnrollmentResponse,
+		http.StatusOK,
+	)
+
+	var refreshedEnrollment mfaEnrollmentResponse
+	if err := json.Unmarshal(
+		refreshedEnrollmentBody,
+		&refreshedEnrollment,
+	); err != nil {
+		t.Fatalf("decode refreshed enrollment response: %v", err)
+	}
+
+	if !refreshedEnrollment.ExpiresAt.After(time.Now()) {
+		t.Fatal("expected refreshed enrollment expiry to be in the future")
+	}
+
+	refreshedSecret := decodeEnrollmentSecret(
+		t,
+		refreshedEnrollment,
+	)
+
+	if bytes.Equal(secret, refreshedSecret) {
+		t.Fatal("refreshed enrollment reused the expired TOTP secret")
+	}
+
+	enrollment = refreshedEnrollment
+	secret = refreshedSecret
+
+	assertEncryptedTOTPSecret(
+		t,
+		ctx,
+		pool,
+		registration.UserID,
+		secret,
+	)
 
 	confirmationTime := time.Now()
 	confirmationCode, err := auth.GenerateTOTPCode(
@@ -482,10 +585,7 @@ func requireResponseStatus(
 
 func decodeEnrollmentSecret(
 	t *testing.T,
-	enrollment struct {
-		ProvisioningURI string `json:"provisioning_uri"`
-		ManualKey       string `json:"manual_key"`
-	},
+	enrollment mfaEnrollmentResponse,
 ) []byte {
 	t.Helper()
 

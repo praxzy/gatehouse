@@ -98,6 +98,7 @@ type TotpCredential struct {
 	ConfirmedAt          pgtype.Timestamptz `json:"confirmed_at"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	EnrollmentExpiresAt  pgtype.Timestamptz `json:"enrollment_expires_at"`
 }
 
 type User struct {

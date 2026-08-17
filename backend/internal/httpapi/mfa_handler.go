@@ -18,6 +18,7 @@ type recoveryCodeRequest struct {
 type totpEnrollmentResponse struct {
 	ProvisioningURI string `json:"provisioning_uri"`
 	ManualKey       string `json:"manual_key"`
+	ExpiresAt       string `json:"expires_at"`
 }
 
 type mfaConfirmationResponse struct {
@@ -59,6 +60,9 @@ func (handler authHandler) beginTOTPEnrollment(
 		totpEnrollmentResponse{
 			ProvisioningURI: result.ProvisioningURI,
 			ManualKey:       result.ManualKey,
+			ExpiresAt: result.ExpiresAt.UTC().Format(
+				timeFormat,
+			),
 		},
 	)
 }
@@ -222,6 +226,13 @@ func writeMFAError(
 			writer,
 			http.StatusConflict,
 			"MFA is already enrolled",
+		)
+
+	case errors.Is(err, auth.ErrMFAEnrollmentExpired):
+		writeError(
+			writer,
+			http.StatusGone,
+			"MFA enrollment expired",
 		)
 
 	case errors.Is(err, auth.ErrMFAEnrollmentNotFound):
