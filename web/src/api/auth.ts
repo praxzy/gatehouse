@@ -47,6 +47,7 @@ export type CurrentUser = {
 export type TOTPEnrollment = {
   provisioning_uri: string
   manual_key: string
+  expires_at: string
 }
 
 export type MFAConfirmation = {

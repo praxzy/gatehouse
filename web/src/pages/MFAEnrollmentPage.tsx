@@ -1,13 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, KeyRound, QrCode, RefreshCw, ShieldCheck } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { QRCodeSVG } from 'qrcode.react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 import { beginTOTPEnrollment, confirmTOTPEnrollment } from '@/api/auth'
 import type { TOTPEnrollment } from '@/api/auth'
+import { APIError } from '@/api/client'
 import { currentUserQueryKey, currentUserQueryOptions, useCurrentUser } from '@/auth/currentUser'
 import { authenticatedDestination, safeReturnTo } from '@/auth/routing'
 import { RequestError } from '@/components/RequestError'
@@ -33,6 +34,7 @@ export function MFAEnrollmentPage() {
   const [searchParams] = useSearchParams()
 
   const [enrollment, setEnrollment] = useState<TOTPEnrollment | null>(null)
+  const [enrollmentExpired, setEnrollmentExpired] = useState(false)
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null)
   const [requestError, setRequestError] = useState<unknown>()
   const [starting, setStarting] = useState(false)
@@ -56,6 +58,23 @@ export function MFAEnrollmentPage() {
     },
   })
 
+  useEffect(() => {
+    if (!enrollment) {
+      return
+    }
+
+    const expiresAt = Date.parse(enrollment.expires_at)
+    const remaining = Number.isNaN(expiresAt) ? 0 : Math.max(0, expiresAt - Date.now())
+
+    const timeout = window.setTimeout(() => {
+      setEnrollmentExpired(true)
+    }, remaining)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [enrollment])
+
   if (!currentUser.data) {
     return null
   }
@@ -71,6 +90,7 @@ export function MFAEnrollmentPage() {
 
     try {
       const result = await beginTOTPEnrollment()
+      setEnrollmentExpired(false)
       setEnrollment(result)
       reset()
     } catch (error) {
@@ -91,6 +111,12 @@ export function MFAEnrollmentPage() {
       setRecoveryCodes(result.recovery_codes)
       reset()
     } catch (error) {
+      if (error instanceof APIError && error.status === 410) {
+        setEnrollmentExpired(true)
+        setRequestError(undefined)
+        reset()
+        return
+      }
       setRequestError(error)
     } finally {
       setConfirming(false)
@@ -289,6 +315,41 @@ export function MFAEnrollmentPage() {
               )}
             </Button>
           </>
+        ) : enrollmentExpired ? (
+          <section className="border border-border bg-card p-5">
+            <div className="grid grid-cols-[auto_1fr] gap-4">
+              <div className="grid size-10 place-items-center bg-primary/10 text-primary">
+                <RefreshCw size={19} aria-hidden="true" />
+              </div>
+
+              <div>
+                <h2 className="text-sm font-semibold">Setup key expired</h2>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Generate a new QR code to continue setting up your authenticator.
+                </p>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              size="lg"
+              onClick={startEnrollment}
+              disabled={starting}
+              className="mt-5 h-11 w-full rounded-lg"
+            >
+              {starting ? (
+                <>
+                  <Spinner />
+                  Preparing setup
+                </>
+              ) : (
+                <>
+                  <RefreshCw aria-hidden="true" />
+                  Generate new setup key
+                </>
+              )}
+            </Button>
+          </section>
         ) : (
           <>
             <section className="border border-border bg-card">
