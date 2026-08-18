@@ -25,6 +25,20 @@ type Membership struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type MembershipInvitation struct {
+	ID                    pgtype.UUID        `json:"id"`
+	TenantID              pgtype.UUID        `json:"tenant_id"`
+	Email                 string             `json:"email"`
+	RoleID                pgtype.UUID        `json:"role_id"`
+	InvitedByMembershipID pgtype.UUID        `json:"invited_by_membership_id"`
+	TokenHash             []byte             `json:"token_hash"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	ExpiresAt             pgtype.Timestamptz `json:"expires_at"`
+	AcceptedAt            pgtype.Timestamptz `json:"accepted_at"`
+	AcceptedByUserID      pgtype.UUID        `json:"accepted_by_user_id"`
+}
+
 type MembershipRole struct {
 	TenantID     pgtype.UUID        `json:"tenant_id"`
 	MembershipID pgtype.UUID        `json:"membership_id"`

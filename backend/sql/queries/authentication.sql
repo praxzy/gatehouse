@@ -84,3 +84,28 @@ FROM users AS u
 JOIN password_credentials AS pc
   ON pc.user_id = u.id
 WHERE u.email = sqlc.arg(email);
+
+-- name: CreateMemberRole :one
+INSERT INTO roles (
+    tenant_id,
+    role_key,
+    name,
+    description,
+    is_system
+)
+VALUES (
+    sqlc.arg(tenant_id),
+    'member',
+    'Member',
+    'Standard tenant member',
+    true
+)
+RETURNING
+    id,
+    tenant_id,
+    role_key,
+    name,
+    description,
+    is_system,
+    created_at,
+    updated_at;

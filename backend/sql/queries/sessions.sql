@@ -63,6 +63,19 @@ SELECT
     u.display_name,
     t.name AS tenant_name,
     t.slug AS tenant_slug,
+        EXISTS (
+        SELECT 1
+        FROM membership_roles AS capability_membership_role
+        JOIN roles AS capability_role
+          ON capability_role.tenant_id =
+             capability_membership_role.tenant_id
+         AND capability_role.id =
+             capability_membership_role.role_id
+        WHERE capability_membership_role.tenant_id = s.tenant_id
+          AND capability_membership_role.membership_id =
+              s.membership_id
+          AND capability_role.role_key = 'owner'
+    )::boolean AS can_manage_members,
     (
         t.mfa_required
         OR EXISTS (
@@ -126,3 +139,12 @@ WHERE tenant_id = sqlc.arg(tenant_id)
   AND authentication_level = 'password'
   AND revoked_at IS NULL
   AND expires_at > now();
+
+-- name: RevokeSessionsForMembership :execrows
+UPDATE sessions
+SET
+    revoked_at = now(),
+    revocation_reason = 'membership_disabled'
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND membership_id = sqlc.arg(membership_id)
+  AND revoked_at IS NULL;

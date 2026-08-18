@@ -35,6 +35,48 @@ func (q *Queries) AssignRoleToMembership(ctx context.Context, arg AssignRoleToMe
 	return err
 }
 
+const createMemberRole = `-- name: CreateMemberRole :one
+INSERT INTO roles (
+    tenant_id,
+    role_key,
+    name,
+    description,
+    is_system
+)
+VALUES (
+    $1,
+    'member',
+    'Member',
+    'Standard tenant member',
+    true
+)
+RETURNING
+    id,
+    tenant_id,
+    role_key,
+    name,
+    description,
+    is_system,
+    created_at,
+    updated_at
+`
+
+func (q *Queries) CreateMemberRole(ctx context.Context, tenantID pgtype.UUID) (Role, error) {
+	row := q.db.QueryRow(ctx, createMemberRole, tenantID)
+	var i Role
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.RoleKey,
+		&i.Name,
+		&i.Description,
+		&i.IsSystem,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createOwnerMembership = `-- name: CreateOwnerMembership :one
 INSERT INTO memberships (
     tenant_id,

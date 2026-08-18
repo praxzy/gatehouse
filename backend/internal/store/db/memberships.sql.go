@@ -11,6 +11,82 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveOwners = `-- name: CountActiveOwners :one
+SELECT count(DISTINCT membership.id)
+FROM memberships AS membership
+JOIN membership_roles AS membership_role
+  ON membership_role.tenant_id = membership.tenant_id
+ AND membership_role.membership_id = membership.id
+JOIN roles AS role
+  ON role.tenant_id = membership_role.tenant_id
+ AND role.id = membership_role.role_id
+WHERE membership.tenant_id = $1
+  AND membership.status = 'active'
+  AND role.role_key = 'owner'
+`
+
+func (q *Queries) CountActiveOwners(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveOwners, tenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createActiveMembership = `-- name: CreateActiveMembership :one
+INSERT INTO memberships (
+    tenant_id,
+    user_id,
+    status
+)
+VALUES (
+    $1,
+    $2,
+    'active'
+)
+RETURNING
+    id,
+    tenant_id,
+    user_id,
+    status,
+    created_at,
+    updated_at
+`
+
+type CreateActiveMembershipParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	UserID   pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) CreateActiveMembership(ctx context.Context, arg CreateActiveMembershipParams) (Membership, error) {
+	row := q.db.QueryRow(ctx, createActiveMembership, arg.TenantID, arg.UserID)
+	var i Membership
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.UserID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteMembershipRoles = `-- name: DeleteMembershipRoles :exec
+DELETE FROM membership_roles
+WHERE tenant_id = $1
+  AND membership_id = $2
+`
+
+type DeleteMembershipRolesParams struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	MembershipID pgtype.UUID `json:"membership_id"`
+}
+
+func (q *Queries) DeleteMembershipRoles(ctx context.Context, arg DeleteMembershipRolesParams) error {
+	_, err := q.db.Exec(ctx, deleteMembershipRoles, arg.TenantID, arg.MembershipID)
+	return err
+}
+
 const getMembershipByID = `-- name: GetMembershipByID :one
 SELECT id, tenant_id, user_id, status, created_at, updated_at
 FROM memberships
@@ -63,6 +139,102 @@ func (q *Queries) GetMembershipByUserID(ctx context.Context, arg GetMembershipBy
 	return i, err
 }
 
+const getMembershipForUpdate = `-- name: GetMembershipForUpdate :one
+SELECT
+    id,
+    tenant_id,
+    user_id,
+    status,
+    created_at,
+    updated_at
+FROM memberships
+WHERE tenant_id = $1
+  AND id = $2
+FOR UPDATE
+`
+
+type GetMembershipForUpdateParams struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	MembershipID pgtype.UUID `json:"membership_id"`
+}
+
+func (q *Queries) GetMembershipForUpdate(ctx context.Context, arg GetMembershipForUpdateParams) (Membership, error) {
+	row := q.db.QueryRow(ctx, getMembershipForUpdate, arg.TenantID, arg.MembershipID)
+	var i Membership
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.UserID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTenantMembershipByEmail = `-- name: GetTenantMembershipByEmail :one
+SELECT
+    membership.id,
+    membership.tenant_id,
+    membership.user_id,
+    membership.status,
+    membership.created_at,
+    membership.updated_at
+FROM memberships AS membership
+JOIN users
+  ON users.id = membership.user_id
+WHERE membership.tenant_id = $1
+  AND users.email = $2
+`
+
+type GetTenantMembershipByEmailParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Email    string      `json:"email"`
+}
+
+func (q *Queries) GetTenantMembershipByEmail(ctx context.Context, arg GetTenantMembershipByEmailParams) (Membership, error) {
+	row := q.db.QueryRow(ctx, getTenantMembershipByEmail, arg.TenantID, arg.Email)
+	var i Membership
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.UserID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const isOwnerMembership = `-- name: IsOwnerMembership :one
+SELECT EXISTS (
+    SELECT 1
+    FROM memberships AS membership
+    JOIN membership_roles AS membership_role
+      ON membership_role.tenant_id = membership.tenant_id
+     AND membership_role.membership_id = membership.id
+    JOIN roles AS role
+      ON role.tenant_id = membership_role.tenant_id
+     AND role.id = membership_role.role_id
+    WHERE membership.tenant_id = $1
+      AND membership.id = $2
+      AND membership.status = 'active'
+      AND role.role_key = 'owner'
+)::boolean
+`
+
+type IsOwnerMembershipParams struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	MembershipID pgtype.UUID `json:"membership_id"`
+}
+
+func (q *Queries) IsOwnerMembership(ctx context.Context, arg IsOwnerMembershipParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isOwnerMembership, arg.TenantID, arg.MembershipID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listMemberships = `-- name: ListMemberships :many
 SELECT id, tenant_id, user_id, status, created_at, updated_at
 FROM memberships
@@ -95,4 +267,152 @@ func (q *Queries) ListMemberships(ctx context.Context, tenantID pgtype.UUID) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const listTenantMembers = `-- name: ListTenantMembers :many
+SELECT
+    membership.id AS membership_id,
+    membership.user_id,
+    users.email,
+    users.display_name,
+    membership.status,
+    role.id AS role_id,
+    role.role_key,
+    role.name AS role_name,
+    membership.created_at,
+    membership.updated_at
+FROM memberships AS membership
+JOIN users
+  ON users.id = membership.user_id
+JOIN membership_roles AS membership_role
+  ON membership_role.tenant_id = membership.tenant_id
+ AND membership_role.membership_id = membership.id
+JOIN roles AS role
+  ON role.tenant_id = membership_role.tenant_id
+ AND role.id = membership_role.role_id
+WHERE membership.tenant_id = $1
+ORDER BY
+    lower(users.display_name),
+    membership.id
+`
+
+type ListTenantMembersRow struct {
+	MembershipID pgtype.UUID        `json:"membership_id"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	Email        string             `json:"email"`
+	DisplayName  string             `json:"display_name"`
+	Status       string             `json:"status"`
+	RoleID       pgtype.UUID        `json:"role_id"`
+	RoleKey      *string            `json:"role_key"`
+	RoleName     string             `json:"role_name"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ListTenantMembers(ctx context.Context, tenantID pgtype.UUID) ([]ListTenantMembersRow, error) {
+	rows, err := q.db.Query(ctx, listTenantMembers, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTenantMembersRow{}
+	for rows.Next() {
+		var i ListTenantMembersRow
+		if err := rows.Scan(
+			&i.MembershipID,
+			&i.UserID,
+			&i.Email,
+			&i.DisplayName,
+			&i.Status,
+			&i.RoleID,
+			&i.RoleKey,
+			&i.RoleName,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockOwnerRoleForUpdate = `-- name: LockOwnerRoleForUpdate :one
+SELECT id
+FROM roles
+WHERE tenant_id = $1
+  AND role_key = 'owner'
+FOR UPDATE
+`
+
+func (q *Queries) LockOwnerRoleForUpdate(ctx context.Context, tenantID pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockOwnerRoleForUpdate, tenantID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const membershipHasOwnerRole = `-- name: MembershipHasOwnerRole :one
+SELECT EXISTS (
+    SELECT 1
+    FROM membership_roles AS membership_role
+    JOIN roles AS role
+      ON role.tenant_id = membership_role.tenant_id
+     AND role.id = membership_role.role_id
+    WHERE membership_role.tenant_id = $1
+      AND membership_role.membership_id =
+          $2
+      AND role.role_key = 'owner'
+)::boolean
+`
+
+type MembershipHasOwnerRoleParams struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	MembershipID pgtype.UUID `json:"membership_id"`
+}
+
+func (q *Queries) MembershipHasOwnerRole(ctx context.Context, arg MembershipHasOwnerRoleParams) (bool, error) {
+	row := q.db.QueryRow(ctx, membershipHasOwnerRole, arg.TenantID, arg.MembershipID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const updateMembershipStatus = `-- name: UpdateMembershipStatus :one
+UPDATE memberships
+SET
+    status = $1,
+    updated_at = now()
+WHERE tenant_id = $2
+  AND id = $3
+RETURNING
+    id,
+    tenant_id,
+    user_id,
+    status,
+    created_at,
+    updated_at
+`
+
+type UpdateMembershipStatusParams struct {
+	Status       string      `json:"status"`
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	MembershipID pgtype.UUID `json:"membership_id"`
+}
+
+func (q *Queries) UpdateMembershipStatus(ctx context.Context, arg UpdateMembershipStatusParams) (Membership, error) {
+	row := q.db.QueryRow(ctx, updateMembershipStatus, arg.Status, arg.TenantID, arg.MembershipID)
+	var i Membership
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.UserID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

@@ -128,6 +128,19 @@ SELECT
     u.display_name,
     t.name AS tenant_name,
     t.slug AS tenant_slug,
+        EXISTS (
+        SELECT 1
+        FROM membership_roles AS capability_membership_role
+        JOIN roles AS capability_role
+          ON capability_role.tenant_id =
+             capability_membership_role.tenant_id
+         AND capability_role.id =
+             capability_membership_role.role_id
+        WHERE capability_membership_role.tenant_id = s.tenant_id
+          AND capability_membership_role.membership_id =
+              s.membership_id
+          AND capability_role.role_key = 'owner'
+    )::boolean AS can_manage_members,
     (
         t.mfa_required
         OR EXISTS (
@@ -173,6 +186,7 @@ type GetActiveSessionByTokenHashRow struct {
 	DisplayName         string             `json:"display_name"`
 	TenantName          string             `json:"tenant_name"`
 	TenantSlug          string             `json:"tenant_slug"`
+	CanManageMembers    bool               `json:"can_manage_members"`
 	MfaRequired         bool               `json:"mfa_required"`
 	MfaEnrolled         bool               `json:"mfa_enrolled"`
 }
@@ -192,6 +206,7 @@ func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, tokenHash []b
 		&i.DisplayName,
 		&i.TenantName,
 		&i.TenantSlug,
+		&i.CanManageMembers,
 		&i.MfaRequired,
 		&i.MfaEnrolled,
 	)
@@ -272,6 +287,29 @@ type RevokeSessionByTokenHashParams struct {
 
 func (q *Queries) RevokeSessionByTokenHash(ctx context.Context, arg RevokeSessionByTokenHashParams) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeSessionByTokenHash, arg.RevocationReason, arg.TokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeSessionsForMembership = `-- name: RevokeSessionsForMembership :execrows
+UPDATE sessions
+SET
+    revoked_at = now(),
+    revocation_reason = 'membership_disabled'
+WHERE tenant_id = $1
+  AND membership_id = $2
+  AND revoked_at IS NULL
+`
+
+type RevokeSessionsForMembershipParams struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	MembershipID pgtype.UUID `json:"membership_id"`
+}
+
+func (q *Queries) RevokeSessionsForMembership(ctx context.Context, arg RevokeSessionsForMembershipParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeSessionsForMembership, arg.TenantID, arg.MembershipID)
 	if err != nil {
 		return 0, err
 	}
