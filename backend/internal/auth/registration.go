@@ -170,6 +170,14 @@ func (service *Service) Register(
 		)
 	}
 
+	_, err = queries.CreateMemberRole(ctx, tenant.ID)
+	if err != nil {
+		return RegisterResult{}, fmt.Errorf(
+			"create member role: %w",
+			err,
+		)
+	}
+
 	err = queries.AssignRoleToMembership(
 		ctx,
 		store.AssignRoleToMembershipParams{

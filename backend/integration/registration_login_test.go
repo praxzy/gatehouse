@@ -22,6 +22,15 @@ func (discardEmailVerificationSender) SendEmailVerification(
 	return nil
 }
 
+type discardMembershipInvitationSender struct{}
+
+func (discardMembershipInvitationSender) SendMembershipInvitation(
+	_ context.Context,
+	_ auth.MembershipInvitationDelivery,
+) error {
+	return nil
+}
+
 func TestRegisterRollsBackOnDuplicateEmailAndTenantSlug(
 	t *testing.T,
 ) {
@@ -215,6 +224,21 @@ func TestRegisterCreatesOwnerIdentityGraph(t *testing.T) {
 		pool,
 		`
 			SELECT count(*)
+			FROM roles
+			WHERE tenant_id = $1
+			  AND role_key = 'member'
+			  AND is_system = true
+		`,
+		1,
+		result.TenantID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
 			FROM membership_roles
 			WHERE tenant_id = $1
 			  AND membership_id = $2
@@ -367,6 +391,22 @@ func newAuthenticationTestServiceWithEmailSender(
 ) (*auth.Service, *pgxpool.Pool) {
 	t.Helper()
 
+	return newAuthenticationTestServiceWithSenders(
+		t,
+		ctx,
+		sender,
+		discardMembershipInvitationSender{},
+	)
+}
+
+func newAuthenticationTestServiceWithSenders(
+	t *testing.T,
+	ctx context.Context,
+	emailSender auth.EmailVerificationSender,
+	invitationSender auth.MembershipInvitationSender,
+) (*auth.Service, *pgxpool.Pool) {
+	t.Helper()
+
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -399,7 +439,10 @@ func newAuthenticationTestServiceWithEmailSender(
 			newIntegrationMFASecretCipher(t),
 		),
 		auth.WithEmailVerificationSender(
-			sender,
+			emailSender,
+		),
+		auth.WithMembershipInvitationSender(
+			invitationSender,
 		),
 	)
 	if err != nil {
@@ -452,12 +495,17 @@ func assertIdentityTableCounts(
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			expected := int64(1)
+			if testCase.name == "roles" {
+				expected = 2
+			}
+
 			assertDatabaseCount(
 				t,
 				ctx,
 				pool,
 				testCase.query,
-				1,
+				expected,
 			)
 		})
 	}

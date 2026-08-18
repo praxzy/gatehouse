@@ -66,6 +66,7 @@ type SessionContext struct {
 	TenantSlug          string
 	MFARequired         bool
 	MFAEnrolled         bool
+	CanManageMembers    bool
 }
 
 func (service *Service) AuthenticateAndCreateSession(
@@ -253,6 +254,7 @@ func (service *Service) ResolveSession(
 		TenantSlug:          session.TenantSlug,
 		MFARequired:         session.MfaRequired,
 		MFAEnrolled:         session.MfaEnrolled,
+		CanManageMembers:    session.CanManageMembers,
 	}, nil
 }
 

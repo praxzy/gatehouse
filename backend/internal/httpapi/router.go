@@ -28,6 +28,38 @@ func NewRouter(dependencies Dependencies) http.Handler {
 			sessionCookie:  dependencies.SessionCookie,
 		}
 
+		router.Route("/api/v1/invitations", func(router chi.Router) {
+			router.Post(
+				"/preview",
+				handler.previewMembershipInvitation,
+			)
+			router.Post(
+				"/accept",
+				handler.acceptMembershipInvitation,
+			)
+		})
+
+		router.Group(func(router chi.Router) {
+			router.Use(requireSession(
+				dependencies.Authentication,
+				dependencies.SessionCookie,
+			))
+			router.Use(requireFullyAuthenticated)
+
+			router.Get(
+				"/api/v1/members",
+				handler.listMembers,
+			)
+			router.Post(
+				"/api/v1/members",
+				handler.inviteMember,
+			)
+			router.Patch(
+				"/api/v1/members/{membershipID}",
+				handler.updateMember,
+			)
+		})
+
 		router.Route("/api/v1/auth", func(router chi.Router) {
 			router.Post("/register", handler.register)
 			router.Post("/email/verify", handler.verifyEmail)

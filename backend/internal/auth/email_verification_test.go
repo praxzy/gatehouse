@@ -71,13 +71,13 @@ func TestHashEmailVerificationTokenRejectsMalformedTokens(
 			token: "not-valid-base64!",
 		},
 		{
-			name:  "too short",
+			name: "too short",
 			token: base64.RawURLEncoding.EncodeToString(
 				make([]byte, emailVerificationTokenBytes-1),
 			),
 		},
 		{
-			name:  "too long",
+			name: "too long",
 			token: base64.RawURLEncoding.EncodeToString(
 				make([]byte, emailVerificationTokenBytes+1),
 			),

@@ -70,6 +70,33 @@ type AuthenticationService interface {
 		session auth.SessionContext,
 		code string,
 	) (auth.MFAChallengeResult, error)
+
+	PreviewMembershipInvitation(
+		ctx context.Context,
+		rawToken string,
+	) (auth.MembershipInvitationPreview, error)
+
+	AcceptMembershipInvitation(
+		ctx context.Context,
+		input auth.AcceptMembershipInvitationInput,
+	) (auth.AcceptMembershipInvitationResult, error)
+
+	ListMembers(
+		ctx context.Context,
+		session auth.SessionContext,
+	) (auth.MemberListResult, error)
+
+	InviteMember(
+		ctx context.Context,
+		session auth.SessionContext,
+		input auth.InviteMemberInput,
+	) (auth.InviteMemberResult, error)
+
+	UpdateMember(
+		ctx context.Context,
+		session auth.SessionContext,
+		input auth.UpdateMemberInput,
+	) error
 }
 
 type authHandler struct {
@@ -108,19 +135,24 @@ type loginResponse struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+type currentUserCapabilitiesResponse struct {
+	ManageMembers bool `json:"manage_members"`
+}
+
 type currentUserResponse struct {
-	UserID              string `json:"user_id"`
-	Email               string `json:"email"`
-	DisplayName         string `json:"display_name"`
-	TenantID            string `json:"tenant_id"`
-	TenantName          string `json:"tenant_name"`
-	TenantSlug          string `json:"tenant_slug"`
-	MembershipID        string `json:"membership_id"`
-	AuthenticationLevel string `json:"authentication_level"`
-	SessionExpiresAt    string `json:"session_expires_at"`
-	MFARequired         bool   `json:"mfa_required"`
-	MFAEnrolled         bool   `json:"mfa_enrolled"`
-	FullyAuthenticated  bool   `json:"fully_authenticated"`
+	UserID              string                          `json:"user_id"`
+	Email               string                          `json:"email"`
+	DisplayName         string                          `json:"display_name"`
+	TenantID            string                          `json:"tenant_id"`
+	TenantName          string                          `json:"tenant_name"`
+	TenantSlug          string                          `json:"tenant_slug"`
+	MembershipID        string                          `json:"membership_id"`
+	AuthenticationLevel string                          `json:"authentication_level"`
+	SessionExpiresAt    string                          `json:"session_expires_at"`
+	MFARequired         bool                            `json:"mfa_required"`
+	MFAEnrolled         bool                            `json:"mfa_enrolled"`
+	FullyAuthenticated  bool                            `json:"fully_authenticated"`
+	Capabilities        currentUserCapabilitiesResponse `json:"capabilities"`
 }
 
 type errorResponse struct {
@@ -382,6 +414,9 @@ func (handler authHandler) currentUser(
 			MFARequired:        session.MFARequired,
 			MFAEnrolled:        session.MFAEnrolled,
 			FullyAuthenticated: !session.MFARequired || session.AuthenticationLevel == "mfa",
+			Capabilities: currentUserCapabilitiesResponse{
+				ManageMembers: session.CanManageMembers,
+			},
 		},
 	)
 }

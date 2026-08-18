@@ -16,12 +16,13 @@ var ErrInvalidServiceConfiguration = errors.New(
 type ServiceOption func(*Service) error
 
 type Service struct {
-	pool                    *pgxpool.Pool
-	queries                 *store.Queries
-	loginRateLimiter        LoginRateLimiter
-	dummyPasswordHash       string
-	mfaSecretCipher         MFASecretCipher
-	emailVerificationSender EmailVerificationSender
+	pool                       *pgxpool.Pool
+	queries                    *store.Queries
+	loginRateLimiter           LoginRateLimiter
+	dummyPasswordHash          string
+	mfaSecretCipher            MFASecretCipher
+	emailVerificationSender    EmailVerificationSender
+	membershipInvitationSender MembershipInvitationSender
 }
 
 func WithMFASecretCipher(
@@ -46,6 +47,19 @@ func WithEmailVerificationSender(
 		}
 
 		service.emailVerificationSender = sender
+		return nil
+	}
+}
+
+func WithMembershipInvitationSender(
+	sender MembershipInvitationSender,
+) ServiceOption {
+	return func(service *Service) error {
+		if sender == nil {
+			return ErrInvalidServiceConfiguration
+		}
+
+		service.membershipInvitationSender = sender
 		return nil
 	}
 }
@@ -83,7 +97,9 @@ func NewService(
 		}
 	}
 
-	if service.mfaSecretCipher == nil || service.emailVerificationSender == nil {
+	if service.mfaSecretCipher == nil ||
+		service.emailVerificationSender == nil ||
+		service.membershipInvitationSender == nil {
 		return nil, ErrInvalidServiceConfiguration
 	}
 

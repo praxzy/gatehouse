@@ -76,12 +76,21 @@ func run() error {
 		return err
 	}
 
+	membershipInvitationSender, err :=
+		membershipInvitationSenderFromEnvironment()
+	if err != nil {
+		return err
+	}
+
 	authentication, err := auth.NewService(
 		pool,
 		loginLimiter,
 		auth.WithMFASecretCipher(mfaSecretCipher),
 		auth.WithEmailVerificationSender(
 			emailVerificationSender,
+		),
+		auth.WithMembershipInvitationSender(
+			membershipInvitationSender,
 		),
 	)
 	if err != nil {

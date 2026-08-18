@@ -19,6 +19,20 @@ func emailVerificationSenderFromEnvironment() (
 	auth.EmailVerificationSender,
 	error,
 ) {
+	webAppURL, err := deliveryWebAppURLFromEnvironment()
+	if err != nil {
+		return nil, err
+	}
+
+	return &developmentEmailVerificationSender{
+		webAppURL: webAppURL,
+	}, nil
+}
+
+func deliveryWebAppURLFromEnvironment() (
+	*url.URL,
+	error,
+) {
 	mode := strings.TrimSpace(
 		os.Getenv("EMAIL_DELIVERY_MODE"),
 	)
@@ -46,9 +60,7 @@ func emailVerificationSenderFromEnvironment() (
 	webAppURL.RawQuery = ""
 	webAppURL.Fragment = ""
 
-	return &developmentEmailVerificationSender{
-		webAppURL: webAppURL,
-	}, nil
+	return webAppURL, nil
 }
 
 func (sender *developmentEmailVerificationSender) SendEmailVerification(
