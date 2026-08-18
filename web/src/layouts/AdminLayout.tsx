@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { ErrorReference } from '@/components/ErrorReference'
+import type { CurrentUser } from '@/api/auth'
 
 const sidebarPreferenceKey = 'gatehouse:admin-sidebar-collapsed'
 
@@ -41,6 +42,7 @@ type NavigationItem = {
   label: string
   icon: LucideIcon
   to?: string
+  requires?: keyof CurrentUser['capabilities']
 }
 
 const navigation: NavigationItem[] = [
@@ -52,6 +54,8 @@ const navigation: NavigationItem[] = [
   {
     label: 'Directory',
     icon: Users,
+    to: '/app/members',
+    requires: 'manage_members',
   },
   {
     label: 'Roles and access',
@@ -121,6 +125,10 @@ export function AdminLayout() {
   }
 
   const user = currentUser.data
+
+  const visibleNavigation = navigation.filter(
+    (item) => !item.requires || user.capabilities[item.requires],
+  )
 
   return (
     <div
@@ -234,7 +242,7 @@ export function AdminLayout() {
           </p>
 
           <ul className="space-y-1">
-            {navigation.map((item) => (
+            {visibleNavigation.map((item) => (
               <li key={item.label}>
                 {item.to ? (
                   <NavLink
@@ -428,7 +436,7 @@ export function AdminLayout() {
                 </p>
 
                 <ul className="space-y-1">
-                  {navigation.map((item) => (
+                  {visibleNavigation.map((item) => (
                     <li key={item.label}>
                       {item.to ? (
                         <NavLink

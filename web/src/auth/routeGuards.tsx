@@ -115,3 +115,29 @@ function AuthenticationLoading() {
     </main>
   )
 }
+
+export function RequireMemberManagement() {
+  const currentUser = useCurrentUser()
+
+  if (currentUser.isPending) {
+    return <AuthenticationLoading />
+  }
+
+  if (currentUser.isError) {
+    if (isUnauthenticated(currentUser.error)) {
+      return <Navigate to="/login" replace />
+    }
+
+    if (isServiceUnavailableError(currentUser.error)) {
+      return <CurrentUserUnavailable currentUser={currentUser} />
+    }
+
+    throw currentUser.error
+  }
+
+  if (!currentUser.data.capabilities.manage_members) {
+    return <Navigate to="/app" replace />
+  }
+
+  return <Outlet />
+}

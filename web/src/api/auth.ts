@@ -42,6 +42,9 @@ export type CurrentUser = {
   mfa_required: boolean
   mfa_enrolled: boolean
   fully_authenticated: boolean
+  capabilities: {
+    manage_members: boolean
+  }
 }
 
 export type TOTPEnrollment = {

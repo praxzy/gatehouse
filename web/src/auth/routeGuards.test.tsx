@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
 import type { CurrentUser } from '@/api/auth'
-import { RequireFullyAuthenticated } from './routeGuards'
+import { RequireFullyAuthenticated, RequireMemberManagement } from './routeGuards'
 import { renderWithProviders } from '@/test/render'
 
 const authenticatedUser: CurrentUser = {
@@ -18,6 +18,7 @@ const authenticatedUser: CurrentUser = {
   mfa_required: true,
   mfa_enrolled: true,
   fully_authenticated: true,
+  capabilities: { manage_members: false },
 }
 
 describe('RequireFullyAuthenticated', () => {
@@ -111,5 +112,75 @@ describe('RequireFullyAuthenticated', () => {
 
     expect(await screen.findByText('Administration console')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
+})
+
+describe('RequireMemberManagement', () => {
+  it('redirects users without member-management capability', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(authenticatedUser), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWithProviders(
+      <Routes>
+        <Route element={<RequireMemberManagement />}>
+          <Route path="/app/members" element={<p>Member directory</p>} />
+        </Route>
+
+        <Route path="/app" element={<p>Overview page</p>} />
+      </Routes>,
+      {
+        route: '/app/members',
+      },
+    )
+
+    expect(await screen.findByText('Overview page')).toBeInTheDocument()
+
+    expect(screen.queryByText('Member directory')).not.toBeInTheDocument()
+  })
+
+  it('allows users with member-management capability', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...authenticatedUser,
+          capabilities: {
+            manage_members: true,
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWithProviders(
+      <Routes>
+        <Route element={<RequireMemberManagement />}>
+          <Route path="/app/members" element={<p>Member directory</p>} />
+        </Route>
+
+        <Route path="/app" element={<p>Overview page</p>} />
+      </Routes>,
+      {
+        route: '/app/members',
+      },
+    )
+
+    expect(await screen.findByText('Member directory')).toBeInTheDocument()
+
+    expect(screen.queryByText('Overview page')).not.toBeInTheDocument()
   })
 })

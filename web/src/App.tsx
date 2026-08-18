@@ -1,6 +1,11 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { PublicOnlyRoute, RequireFullyAuthenticated, RequireSession } from '@/auth/routeGuards'
+import {
+  PublicOnlyRoute,
+  RequireFullyAuthenticated,
+  RequireSession,
+  RequireMemberManagement,
+} from '@/auth/routeGuards'
 import { Spinner } from '@/components/ui/spinner'
 
 const AuthLayout = lazy(() =>
@@ -33,6 +38,12 @@ const VerifyEmailPage = lazy(() =>
   })),
 )
 
+const AcceptInvitationPage = lazy(() =>
+  import('./pages/AcceptInvitationPage').then((module) => ({
+    default: module.AcceptInvitationPage,
+  })),
+)
+
 const MFAEnrollmentPage = lazy(() =>
   import('./pages/MFAEnrollmentPage').then((module) => ({
     default: module.MFAEnrollmentPage,
@@ -51,12 +62,19 @@ const DashboardPage = lazy(() =>
   })),
 )
 
+const MembersPage = lazy(() =>
+  import('./pages/MembersPage').then((module) => ({
+    default: module.MembersPage,
+  })),
+)
+
 function App() {
   return (
     <Suspense fallback={<RouteLoading />}>
       <Routes>
         <Route element={<AuthLayout />}>
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
 
           <Route element={<PublicOnlyRoute />}>
             <Route path="/login" element={<LoginPage />} />
@@ -72,6 +90,10 @@ function App() {
         <Route element={<RequireFullyAuthenticated />}>
           <Route element={<AdminLayout />}>
             <Route path="/app" element={<DashboardPage />} />
+
+            <Route element={<RequireMemberManagement />}>
+              <Route path="/app/members" element={<MembersPage />} />
+            </Route>
           </Route>
         </Route>
 

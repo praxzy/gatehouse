@@ -18,6 +18,7 @@ const passwordSession: CurrentUser = {
   mfa_required: true,
   mfa_enrolled: true,
   fully_authenticated: false,
+  capabilities: { manage_members: false },
 }
 
 describe('MFAChallengePage', () => {
