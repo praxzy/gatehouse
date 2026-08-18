@@ -352,7 +352,7 @@ func TestMembershipInvitationAndOffboardingLifecycle(
 	requireResponseStatus(
 		t,
 		memberListing,
-		http.StatusForbidden,
+		http.StatusOK,
 	)
 
 	ownerListing := performRequest(

@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/praxzy/gatehouse/backend/internal/auth"
 )
 
 type Dependencies struct {
@@ -46,17 +48,46 @@ func NewRouter(dependencies Dependencies) http.Handler {
 			))
 			router.Use(requireFullyAuthenticated)
 
-			router.Get(
+			router.With(
+				requirePermission(auth.PermissionMemberRead),
+			).Get(
 				"/api/v1/members",
 				handler.listMembers,
 			)
-			router.Post(
+
+			router.With(
+				requirePermission(auth.PermissionMemberManage),
+			).Post(
 				"/api/v1/members",
 				handler.inviteMember,
 			)
-			router.Patch(
+
+			router.With(
+				requirePermission(auth.PermissionMemberManage),
+			).Patch(
 				"/api/v1/members/{membershipID}",
 				handler.updateMember,
+			)
+
+			router.With(
+				requirePermission(auth.PermissionRoleRead),
+			).Get(
+				"/api/v1/roles",
+				handler.listRoles,
+			)
+
+			router.With(
+				requirePermission(auth.PermissionRoleManage),
+			).Post(
+				"/api/v1/roles",
+				handler.createRole,
+			)
+
+			router.With(
+				requirePermission(auth.PermissionRoleManage),
+			).Put(
+				"/api/v1/roles/{roleID}",
+				handler.updateRole,
 			)
 		})
 

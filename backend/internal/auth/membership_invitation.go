@@ -83,6 +83,11 @@ func (service *Service) InviteMember(
 	session SessionContext,
 	input InviteMemberInput,
 ) (InviteMemberResult, error) {
+	if !session.HasPermission(PermissionMemberManage) {
+		return InviteMemberResult{},
+			ErrMemberManagementForbidden
+	}
+
 	email := strings.ToLower(strings.TrimSpace(input.Email))
 
 	if !validEmail(email) || !input.RoleID.Valid {
@@ -114,35 +119,6 @@ func (service *Service) InviteMember(
 	}()
 
 	queries := service.queries.WithTx(transaction)
-
-	_, err = queries.LockOwnerRoleForUpdate(
-		ctx,
-		session.TenantID,
-	)
-	if err != nil {
-		return InviteMemberResult{}, fmt.Errorf(
-			"lock owner role: %w",
-			err,
-		)
-	}
-
-	isOwner, err := queries.IsOwnerMembership(
-		ctx,
-		store.IsOwnerMembershipParams{
-			TenantID:     session.TenantID,
-			MembershipID: session.MembershipID,
-		},
-	)
-	if err != nil {
-		return InviteMemberResult{}, fmt.Errorf(
-			"authorize member invitation: %w",
-			err,
-		)
-	}
-	if !isOwner {
-		return InviteMemberResult{},
-			ErrMemberManagementForbidden
-	}
 
 	role, err := queries.GetRoleByID(
 		ctx,

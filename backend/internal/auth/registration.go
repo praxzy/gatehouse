@@ -170,10 +170,38 @@ func (service *Service) Register(
 		)
 	}
 
-	_, err = queries.CreateMemberRole(ctx, tenant.ID)
+	memberRole, err := queries.CreateMemberRole(ctx, tenant.ID)
 	if err != nil {
 		return RegisterResult{}, fmt.Errorf(
 			"create member role: %w",
+			err,
+		)
+	}
+
+	err = queries.GrantOwnerRolePermissions(
+		ctx,
+		store.GrantOwnerRolePermissionsParams{
+			TenantID: tenant.ID,
+			RoleID:   ownerRole.ID,
+		},
+	)
+	if err != nil {
+		return RegisterResult{}, fmt.Errorf(
+			"grant owner role permissions: %w",
+			err,
+		)
+	}
+
+	err = queries.GrantMemberRolePermissions(
+		ctx,
+		store.GrantMemberRolePermissionsParams{
+			TenantID: tenant.ID,
+			RoleID:   memberRole.ID,
+		},
+	)
+	if err != nil {
+		return RegisterResult{}, fmt.Errorf(
+			"grant member role permissions: %w",
 			err,
 		)
 	}

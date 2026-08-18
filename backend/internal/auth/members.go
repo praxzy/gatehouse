@@ -73,20 +73,7 @@ func (service *Service) ListMembers(
 	ctx context.Context,
 	session SessionContext,
 ) (MemberListResult, error) {
-	isOwner, err := service.queries.IsOwnerMembership(
-		ctx,
-		store.IsOwnerMembershipParams{
-			TenantID:     session.TenantID,
-			MembershipID: session.MembershipID,
-		},
-	)
-	if err != nil {
-		return MemberListResult{}, fmt.Errorf(
-			"authorize member listing: %w",
-			err,
-		)
-	}
-	if !isOwner {
+	if !session.HasPermission(PermissionMemberRead) {
 		return MemberListResult{},
 			ErrMemberManagementForbidden
 	}
@@ -200,6 +187,10 @@ func (service *Service) UpdateMember(
 	session SessionContext,
 	input UpdateMemberInput,
 ) error {
+	if !session.HasPermission(PermissionMemberManage) {
+		return ErrMemberManagementForbidden
+	}
+
 	status := strings.ToLower(
 		strings.TrimSpace(input.Status),
 	)
@@ -236,23 +227,6 @@ func (service *Service) UpdateMember(
 	)
 	if err != nil {
 		return fmt.Errorf("lock owner role: %w", err)
-	}
-
-	isOwner, err := queries.IsOwnerMembership(
-		ctx,
-		store.IsOwnerMembershipParams{
-			TenantID:     session.TenantID,
-			MembershipID: session.MembershipID,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf(
-			"authorize member update: %w",
-			err,
-		)
-	}
-	if !isOwner {
-		return ErrMemberManagementForbidden
 	}
 
 	target, err := queries.GetMembershipForUpdate(

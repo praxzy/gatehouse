@@ -97,6 +97,23 @@ type AuthenticationService interface {
 		session auth.SessionContext,
 		input auth.UpdateMemberInput,
 	) error
+
+	ListRoles(
+		ctx context.Context,
+		session auth.SessionContext,
+	) (auth.RoleListResult, error)
+
+	CreateRole(
+		ctx context.Context,
+		session auth.SessionContext,
+		input auth.CreateRoleInput,
+	) (auth.RoleSummary, error)
+
+	UpdateRole(
+		ctx context.Context,
+		session auth.SessionContext,
+		input auth.UpdateRoleInput,
+	) (auth.RoleSummary, error)
 }
 
 type authHandler struct {
@@ -153,6 +170,7 @@ type currentUserResponse struct {
 	MFAEnrolled         bool                            `json:"mfa_enrolled"`
 	FullyAuthenticated  bool                            `json:"fully_authenticated"`
 	Capabilities        currentUserCapabilitiesResponse `json:"capabilities"`
+	Permissions         []string                        `json:"permissions"`
 }
 
 type errorResponse struct {
@@ -415,8 +433,11 @@ func (handler authHandler) currentUser(
 			MFAEnrolled:        session.MFAEnrolled,
 			FullyAuthenticated: !session.MFARequired || session.AuthenticationLevel == "mfa",
 			Capabilities: currentUserCapabilitiesResponse{
-				ManageMembers: session.CanManageMembers,
+				ManageMembers: session.HasPermission(
+					auth.PermissionMemberManage,
+				),
 			},
+			Permissions: session.Permissions,
 		},
 	)
 }
