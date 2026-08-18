@@ -3,6 +3,8 @@ import { Clock3, Mail, UserCheck, UserRoundX, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Member, MembershipRole, OpenMembershipInvitation } from '@/api/members'
 import { APIError } from '@/api/client'
+import { useCurrentUser } from '@/auth/currentUser'
+import { hasPermission, permissions } from '@/auth/permissions'
 import { ErrorReference } from '@/components/ErrorReference'
 import { RequestError } from '@/components/RequestError'
 import {
@@ -29,9 +31,15 @@ import { Surface } from '@/components/ui/surface'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { InviteMemberSheet } from '@/members/InviteMemberSheet'
 import { useMembers, useUpdateMember } from '@/members/queries'
+import { cn } from '@/lib/utils'
 
 export function MembersPage() {
   const members = useMembers()
+  const currentUser = useCurrentUser()
+
+  const canManageMembers = currentUser.data
+    ? hasPermission(currentUser.data.permissions, permissions.memberManage)
+    : false
 
   if (members.isPending) {
     return (
@@ -88,7 +96,7 @@ export function MembersPage() {
           </p>
         </div>
 
-        <InviteMemberSheet roles={members.data.roles} />
+        {canManageMembers && <InviteMemberSheet roles={members.data.roles} />}
       </header>
 
       <Tabs defaultValue="members" className="motion-enter motion-enter-delay-1 mt-8">
@@ -105,7 +113,11 @@ export function MembersPage() {
         </TabsList>
 
         <TabsContent value="members" className="mt-5">
-          <MemberDirectory members={members.data.members} roles={members.data.roles} />
+          <MemberDirectory
+            members={members.data.members}
+            roles={members.data.roles}
+            canManageMembers={canManageMembers}
+          />
         </TabsContent>
 
         <TabsContent value="invitations" className="mt-5">
@@ -116,7 +128,15 @@ export function MembersPage() {
   )
 }
 
-function MemberDirectory({ members, roles }: { members: Member[]; roles: MembershipRole[] }) {
+function MemberDirectory({
+  members,
+  roles,
+  canManageMembers,
+}: {
+  members: Member[]
+  roles: MembershipRole[]
+  canManageMembers: boolean
+}) {
   if (members.length === 0) {
     return (
       <EmptyDirectory
@@ -130,13 +150,26 @@ function MemberDirectory({ members, roles }: { members: Member[]; roles: Members
   return (
     <Surface className="divide-y divide-border">
       {members.map((member) => (
-        <MemberRow key={member.membership_id} member={member} roles={roles} />
+        <MemberRow
+          key={member.membership_id}
+          member={member}
+          roles={roles}
+          canManageMembers={canManageMembers}
+        />
       ))}
     </Surface>
   )
 }
 
-function MemberRow({ member, roles }: { member: Member; roles: MembershipRole[] }) {
+function MemberRow({
+  member,
+  roles,
+  canManageMembers,
+}: {
+  member: Member
+  roles: MembershipRole[]
+  canManageMembers: boolean
+}) {
   const updateMember = useUpdateMember()
   const [proposedRoleID, setProposedRoleID] = useState<string>()
 
@@ -200,7 +233,14 @@ function MemberRow({ member, roles }: { member: Member; roles: MembershipRole[] 
   }
 
   return (
-    <div className="grid gap-5 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(14rem,1fr)_10rem_12rem_auto] lg:items-center">
+    <div
+      className={cn(
+        'grid gap-5 px-5 py-5 sm:px-6 lg:items-center',
+        canManageMembers
+          ? 'lg:grid-cols-[minmax(14rem,1fr)_10rem_12rem_auto]'
+          : 'lg:grid-cols-[minmax(14rem,1fr)_10rem_12rem]',
+      )}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <div
           className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/8 text-xs font-semibold text-primary"
@@ -228,113 +268,126 @@ function MemberRow({ member, roles }: { member: Member; roles: MembershipRole[] 
       </div>
 
       <div>
-        <label
-          htmlFor={`member-role-${member.membership_id}`}
-          className="mb-1.5 block text-[0.62rem] font-semibold tracking-[0.12em] text-muted-foreground uppercase lg:sr-only"
-        >
-          Role
-        </label>
+        {canManageMembers ? (
+          <>
+            <label
+              htmlFor={`member-role-${member.membership_id}`}
+              className="mb-1.5 block text-[0.62rem] font-semibold tracking-[0.12em] text-muted-foreground uppercase lg:sr-only"
+            >
+              Role
+            </label>
 
-        <Select
-          value={displayedRoleID}
-          onValueChange={proposeRoleChange}
-          disabled={updateMember.isPending}
-        >
-          <SelectTrigger
-            id={`member-role-${member.membership_id}`}
-            className="h-9 w-full rounded-lg"
-            aria-label={`Role for ${member.display_name}`}
-          >
-            <SelectValue />
-          </SelectTrigger>
-
-          <SelectContent>
-            {roles.map((role) => (
-              <SelectItem key={role.role_id} value={role.role_id}>
-                {role.role_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <AlertDialog
-          open={proposedRole !== undefined}
-          onOpenChange={(open) => {
-            if (!open) {
-              setProposedRoleID(undefined)
-            }
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Change {member.display_name}’s role?</AlertDialogTitle>
-
-              <AlertDialogDescription>
-                Change their role from {member.role_name} to {proposedRole?.role_name}. Their
-                permissions will update immediately.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-
-            <AlertDialogFooter>
-              <AlertDialogCancel>Keep current role</AlertDialogCancel>
-
-              <AlertDialogAction onClick={() => void confirmRoleChange()}>
-                Change role
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-
-      <div className="flex justify-end">
-        {member.status === 'disabled' ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={updateMember.isPending}
-            onClick={() => changeStatus('active')}
-            className="w-full rounded-lg lg:w-auto"
-          >
-            {updateMember.isPending ? <Spinner /> : <UserCheck aria-hidden="true" />}
-            Reactivate
-          </Button>
-        ) : (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={updateMember.isPending}
-                className="w-full rounded-lg text-muted-foreground lg:w-auto"
+            <Select
+              value={displayedRoleID}
+              onValueChange={proposeRoleChange}
+              disabled={updateMember.isPending}
+            >
+              <SelectTrigger
+                id={`member-role-${member.membership_id}`}
+                className="h-9 w-full rounded-lg"
+                aria-label={`Role for ${member.display_name}`}
               >
-                <UserRoundX aria-hidden="true" />
-                Disable
-              </Button>
-            </AlertDialogTrigger>
+                <SelectValue />
+              </SelectTrigger>
 
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Disable {member.display_name}?</AlertDialogTitle>
+              <SelectContent>
+                {roles.map((role) => (
+                  <SelectItem key={role.role_id} value={role.role_id}>
+                    {role.role_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-                <AlertDialogDescription>
-                  They will lose access to this organization and their active Gatehouse sessions
-                  will be revoked.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
+            <AlertDialog
+              open={proposedRole !== undefined}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setProposedRoleID(undefined)
+                }
+              }}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Change {member.display_name}’s role?</AlertDialogTitle>
 
-              <AlertDialogFooter>
-                <AlertDialogCancel>Keep active</AlertDialogCancel>
+                  <AlertDialogDescription>
+                    Change their role from {member.role_name} to {proposedRole?.role_name}. Their
+                    permissions will update immediately.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
 
-                <AlertDialogAction onClick={() => changeStatus('disabled')}>
-                  Disable member
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep current role</AlertDialogCancel>
+
+                  <AlertDialogAction onClick={() => void confirmRoleChange()}>
+                    Change role
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        ) : (
+          <div>
+            <p className="mb-1.5 text-[0.62rem] font-semibold tracking-[0.12em] text-muted-foreground uppercase lg:sr-only">
+              Role
+            </p>
+            <p className="text-sm font-medium">{member.role_name}</p>
+          </div>
         )}
       </div>
+
+      {canManageMembers && (
+        <div className="flex justify-end">
+          {member.status === 'disabled' ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={updateMember.isPending}
+              onClick={() => changeStatus('active')}
+              className="w-full rounded-lg lg:w-auto"
+            >
+              {updateMember.isPending ? <Spinner /> : <UserCheck aria-hidden="true" />}
+              Reactivate
+            </Button>
+          ) : (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={updateMember.isPending}
+                  className="w-full rounded-lg text-muted-foreground lg:w-auto"
+                >
+                  <UserRoundX aria-hidden="true" />
+                  Disable
+                </Button>
+              </AlertDialogTrigger>
+
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Disable {member.display_name}?</AlertDialogTitle>
+
+                  <AlertDialogDescription>
+                    They will lose access to this organization and their active Gatehouse sessions
+                    will be revoked.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep active</AlertDialogCancel>
+
+                  <AlertDialogAction onClick={() => changeStatus('disabled')}>
+                    Disable member
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
+      )}
     </div>
   )
 }

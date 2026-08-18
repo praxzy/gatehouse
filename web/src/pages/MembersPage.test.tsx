@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { permissions } from '@/auth/permissions'
 import { MembersPage } from './MembersPage'
 import { renderWithProviders } from '@/test/render'
 
@@ -16,6 +17,20 @@ describe('MembersPage', () => {
         typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
 
       const method = options?.method ?? 'GET'
+
+      if (path === '/api/v1/auth/current-user' && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            permissions: [permissions.memberManage],
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          },
+        )
+      }
 
       if (path === '/api/v1/members' && method === 'GET') {
         return new Response(

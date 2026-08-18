@@ -42,6 +42,7 @@ export type CurrentUser = {
   mfa_required: boolean
   mfa_enrolled: boolean
   fully_authenticated: boolean
+  permissions: string[]
   capabilities: {
     manage_members: boolean
   }

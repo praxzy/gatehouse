@@ -31,7 +31,8 @@ import {
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { ErrorReference } from '@/components/ErrorReference'
-import type { CurrentUser } from '@/api/auth'
+import type { Permission } from '@/auth/permissions'
+import { hasPermission, permissions } from '@/auth/permissions'
 
 const sidebarPreferenceKey = 'gatehouse:admin-sidebar-collapsed'
 
@@ -42,7 +43,7 @@ type NavigationItem = {
   label: string
   icon: LucideIcon
   to?: string
-  requires?: keyof CurrentUser['capabilities']
+  requires?: Permission
 }
 
 const navigation: NavigationItem[] = [
@@ -55,11 +56,13 @@ const navigation: NavigationItem[] = [
     label: 'Directory',
     icon: Users,
     to: '/app/members',
-    requires: 'manage_members',
+    requires: permissions.memberRead,
   },
   {
     label: 'Roles and access',
     icon: KeyRound,
+    to: '/app/roles',
+    requires: permissions.roleRead,
   },
   {
     label: 'Applications',
@@ -127,7 +130,7 @@ export function AdminLayout() {
   const user = currentUser.data
 
   const visibleNavigation = navigation.filter(
-    (item) => !item.requires || user.capabilities[item.requires],
+    (item) => !item.requires || hasPermission(user.permissions, item.requires),
   )
 
   return (

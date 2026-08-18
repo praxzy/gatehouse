@@ -2,8 +2,9 @@ import { screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
 import type { CurrentUser } from '@/api/auth'
-import { RequireFullyAuthenticated, RequireMemberManagement } from './routeGuards'
+import { RequireFullyAuthenticated, RequirePermission } from './routeGuards'
 import { renderWithProviders } from '@/test/render'
+import { permissions } from '@/auth/permissions'
 
 const authenticatedUser: CurrentUser = {
   user_id: 'user-alpha',
@@ -18,6 +19,7 @@ const authenticatedUser: CurrentUser = {
   mfa_required: true,
   mfa_enrolled: true,
   fully_authenticated: true,
+  permissions: [],
   capabilities: { manage_members: false },
 }
 
@@ -115,7 +117,7 @@ describe('RequireFullyAuthenticated', () => {
   })
 })
 
-describe('RequireMemberManagement', () => {
+describe('RequirePermission', () => {
   it('redirects users without member-management capability', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(authenticatedUser), {
@@ -130,7 +132,7 @@ describe('RequireMemberManagement', () => {
 
     renderWithProviders(
       <Routes>
-        <Route element={<RequireMemberManagement />}>
+        <Route element={<RequirePermission permission={permissions.memberRead} />}>
           <Route path="/app/members" element={<p>Member directory</p>} />
         </Route>
 
@@ -151,9 +153,7 @@ describe('RequireMemberManagement', () => {
       new Response(
         JSON.stringify({
           ...authenticatedUser,
-          capabilities: {
-            manage_members: true,
-          },
+          permissions: [permissions.memberRead],
         }),
         {
           status: 200,
@@ -168,7 +168,7 @@ describe('RequireMemberManagement', () => {
 
     renderWithProviders(
       <Routes>
-        <Route element={<RequireMemberManagement />}>
+        <Route element={<RequirePermission permission={permissions.memberRead} />}>
           <Route path="/app/members" element={<p>Member directory</p>} />
         </Route>
 

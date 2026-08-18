@@ -4,6 +4,8 @@ import { ServiceUnavailablePage } from '@/components/ServiceUnavailablePage'
 import { Spinner } from '@/components/ui/spinner'
 import { useCurrentUser } from './currentUser'
 import { authenticatedDestination } from './routing'
+import type { Permission } from '@/auth/permissions'
+import { hasPermission } from '@/auth/permissions'
 
 export function PublicOnlyRoute() {
   const currentUser = useCurrentUser()
@@ -116,7 +118,7 @@ function AuthenticationLoading() {
   )
 }
 
-export function RequireMemberManagement() {
+export function RequirePermission({ permission }: { permission: Permission }) {
   const currentUser = useCurrentUser()
 
   if (currentUser.isPending) {
@@ -135,7 +137,7 @@ export function RequireMemberManagement() {
     throw currentUser.error
   }
 
-  if (!currentUser.data.capabilities.manage_members) {
+  if (!hasPermission(currentUser.data.permissions, permission)) {
     return <Navigate to="/app" replace />
   }
 

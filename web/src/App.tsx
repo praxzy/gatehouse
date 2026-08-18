@@ -4,9 +4,10 @@ import {
   PublicOnlyRoute,
   RequireFullyAuthenticated,
   RequireSession,
-  RequireMemberManagement,
+  RequirePermission,
 } from '@/auth/routeGuards'
 import { Spinner } from '@/components/ui/spinner'
+import { permissions } from '@/auth/permissions'
 
 const AuthLayout = lazy(() =>
   import('./layouts/AuthLayout').then((module) => ({
@@ -68,6 +69,12 @@ const MembersPage = lazy(() =>
   })),
 )
 
+const RolesPage = lazy(() =>
+  import('./pages/RolesPage').then((module) => ({
+    default: module.RolesPage,
+  })),
+)
+
 function App() {
   return (
     <Suspense fallback={<RouteLoading />}>
@@ -91,8 +98,12 @@ function App() {
           <Route element={<AdminLayout />}>
             <Route path="/app" element={<DashboardPage />} />
 
-            <Route element={<RequireMemberManagement />}>
+            <Route element={<RequirePermission permission={permissions.memberRead} />}>
               <Route path="/app/members" element={<MembersPage />} />
+            </Route>
+
+            <Route element={<RequirePermission permission={permissions.roleRead} />}>
+              <Route path="/app/roles" element={<RolesPage />} />
             </Route>
           </Route>
         </Route>
