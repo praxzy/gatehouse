@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
@@ -29,6 +29,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import { ErrorReference } from '@/components/ErrorReference'
 import type { Permission } from '@/auth/permissions'
@@ -95,7 +96,13 @@ export function AdminLayout() {
     }
 
     const target = event.target
-    if (target instanceof Element && target.closest('[data-sidebar-keep-action]')) {
+
+    if (
+      target instanceof Element &&
+      target.closest(
+        'a, button, input, select, textarea, [role="button"], [data-sidebar-keep-action]',
+      )
+    ) {
       return
     }
 
@@ -503,8 +510,25 @@ export function AdminLayout() {
         </header>
 
         <main className="min-w-0 flex-1">
-          <Outlet />
+          <Suspense fallback={<AdminPageLoading />}>
+            <Outlet />
+          </Suspense>
         </main>
+      </div>
+    </div>
+  )
+}
+
+function AdminPageLoading() {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="grid min-h-[calc(100svh-4rem)] place-items-center lg:min-h-svh"
+    >
+      <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+        <Spinner />
+        Loading page
       </div>
     </div>
   )
