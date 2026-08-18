@@ -61,6 +61,12 @@ type PasswordCredential struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+type PermissionCatalog struct {
+	Permission  string `json:"permission"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 type Role struct {
 	ID          pgtype.UUID        `json:"id"`
 	TenantID    pgtype.UUID        `json:"tenant_id"`

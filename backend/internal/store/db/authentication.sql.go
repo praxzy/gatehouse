@@ -273,3 +273,55 @@ func (q *Queries) GetPasswordLoginByEmail(ctx context.Context, email string) (Ge
 	)
 	return i, err
 }
+
+const grantMemberRolePermissions = `-- name: GrantMemberRolePermissions :exec
+INSERT INTO role_permissions (
+    tenant_id,
+    role_id,
+    permission
+)
+SELECT
+    $1,
+    $2,
+    permission
+FROM permission_catalog
+WHERE permission IN (
+    'tenant.read',
+    'member.read'
+)
+ON CONFLICT DO NOTHING
+`
+
+type GrantMemberRolePermissionsParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	RoleID   pgtype.UUID `json:"role_id"`
+}
+
+func (q *Queries) GrantMemberRolePermissions(ctx context.Context, arg GrantMemberRolePermissionsParams) error {
+	_, err := q.db.Exec(ctx, grantMemberRolePermissions, arg.TenantID, arg.RoleID)
+	return err
+}
+
+const grantOwnerRolePermissions = `-- name: GrantOwnerRolePermissions :exec
+INSERT INTO role_permissions (
+    tenant_id,
+    role_id,
+    permission
+)
+SELECT
+    $1,
+    $2,
+    permission
+FROM permission_catalog
+ON CONFLICT DO NOTHING
+`
+
+type GrantOwnerRolePermissionsParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	RoleID   pgtype.UUID `json:"role_id"`
+}
+
+func (q *Queries) GrantOwnerRolePermissions(ctx context.Context, arg GrantOwnerRolePermissionsParams) error {
+	_, err := q.db.Exec(ctx, grantOwnerRolePermissions, arg.TenantID, arg.RoleID)
+	return err
+}

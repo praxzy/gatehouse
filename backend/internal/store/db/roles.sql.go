@@ -11,6 +11,130 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addRolePermission = `-- name: AddRolePermission :exec
+INSERT INTO role_permissions (
+    tenant_id,
+    role_id,
+    permission
+)
+VALUES (
+    $1,
+    $2,
+    $3
+)
+`
+
+type AddRolePermissionParams struct {
+	TenantID   pgtype.UUID `json:"tenant_id"`
+	RoleID     pgtype.UUID `json:"role_id"`
+	Permission string      `json:"permission"`
+}
+
+func (q *Queries) AddRolePermission(ctx context.Context, arg AddRolePermissionParams) error {
+	_, err := q.db.Exec(ctx, addRolePermission, arg.TenantID, arg.RoleID, arg.Permission)
+	return err
+}
+
+const createCustomRole = `-- name: CreateCustomRole :one
+INSERT INTO roles (
+    tenant_id,
+    name,
+    description,
+    is_system
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    false
+)
+RETURNING
+    id,
+    tenant_id,
+    role_key,
+    name,
+    description,
+    is_system,
+    created_at,
+    updated_at
+`
+
+type CreateCustomRoleParams struct {
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	Name        string      `json:"name"`
+	Description *string     `json:"description"`
+}
+
+func (q *Queries) CreateCustomRole(ctx context.Context, arg CreateCustomRoleParams) (Role, error) {
+	row := q.db.QueryRow(ctx, createCustomRole, arg.TenantID, arg.Name, arg.Description)
+	var i Role
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.RoleKey,
+		&i.Name,
+		&i.Description,
+		&i.IsSystem,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteRolePermissions = `-- name: DeleteRolePermissions :exec
+DELETE FROM role_permissions
+WHERE tenant_id = $1
+  AND role_id = $2
+`
+
+type DeleteRolePermissionsParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	RoleID   pgtype.UUID `json:"role_id"`
+}
+
+func (q *Queries) DeleteRolePermissions(ctx context.Context, arg DeleteRolePermissionsParams) error {
+	_, err := q.db.Exec(ctx, deleteRolePermissions, arg.TenantID, arg.RoleID)
+	return err
+}
+
+const getCustomRoleForUpdate = `-- name: GetCustomRoleForUpdate :one
+SELECT
+    id,
+    tenant_id,
+    role_key,
+    name,
+    description,
+    is_system,
+    created_at,
+    updated_at
+FROM roles
+WHERE tenant_id = $1
+  AND id = $2
+  AND is_system = false
+FOR UPDATE
+`
+
+type GetCustomRoleForUpdateParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	RoleID   pgtype.UUID `json:"role_id"`
+}
+
+func (q *Queries) GetCustomRoleForUpdate(ctx context.Context, arg GetCustomRoleForUpdateParams) (Role, error) {
+	row := q.db.QueryRow(ctx, getCustomRoleForUpdate, arg.TenantID, arg.RoleID)
+	var i Role
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.RoleKey,
+		&i.Name,
+		&i.Description,
+		&i.IsSystem,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRoleByID = `-- name: GetRoleByID :one
 SELECT id, tenant_id, role_key, name, description, is_system, created_at, updated_at
 FROM roles
@@ -37,6 +161,35 @@ func (q *Queries) GetRoleByID(ctx context.Context, arg GetRoleByIDParams) (Role,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listPermissionCatalog = `-- name: ListPermissionCatalog :many
+SELECT
+    permission,
+    name,
+    description
+FROM permission_catalog
+ORDER BY permission
+`
+
+func (q *Queries) ListPermissionCatalog(ctx context.Context) ([]PermissionCatalog, error) {
+	rows, err := q.db.Query(ctx, listPermissionCatalog)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PermissionCatalog{}
+	for rows.Next() {
+		var i PermissionCatalog
+		if err := rows.Scan(&i.Permission, &i.Name, &i.Description); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRolePermissions = `-- name: ListRolePermissions :many
@@ -159,4 +312,119 @@ func (q *Queries) ListRolesForMembership(ctx context.Context, arg ListRolesForMe
 		return nil, err
 	}
 	return items, nil
+}
+
+const listTenantRolesWithPermissions = `-- name: ListTenantRolesWithPermissions :many
+SELECT
+    role.id,
+    role.tenant_id,
+    role.role_key,
+    role.name,
+    role.description,
+    role.is_system,
+    role.created_at,
+    role.updated_at,
+    ARRAY(
+        SELECT role_permission.permission
+        FROM role_permissions AS role_permission
+        WHERE role_permission.tenant_id = role.tenant_id
+          AND role_permission.role_id = role.id
+        ORDER BY role_permission.permission
+    )::text[] AS permissions
+FROM roles AS role
+WHERE role.tenant_id = $1
+ORDER BY
+    role.is_system DESC,
+    lower(role.name),
+    role.id
+`
+
+type ListTenantRolesWithPermissionsRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	RoleKey     *string            `json:"role_key"`
+	Name        string             `json:"name"`
+	Description *string            `json:"description"`
+	IsSystem    bool               `json:"is_system"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Permissions []string           `json:"permissions"`
+}
+
+func (q *Queries) ListTenantRolesWithPermissions(ctx context.Context, tenantID pgtype.UUID) ([]ListTenantRolesWithPermissionsRow, error) {
+	rows, err := q.db.Query(ctx, listTenantRolesWithPermissions, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTenantRolesWithPermissionsRow{}
+	for rows.Next() {
+		var i ListTenantRolesWithPermissionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.RoleKey,
+			&i.Name,
+			&i.Description,
+			&i.IsSystem,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Permissions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateCustomRole = `-- name: UpdateCustomRole :one
+UPDATE roles
+SET
+    name = $1,
+    description = $2,
+    updated_at = now()
+WHERE tenant_id = $3
+  AND id = $4
+  AND is_system = false
+RETURNING
+    id,
+    tenant_id,
+    role_key,
+    name,
+    description,
+    is_system,
+    created_at,
+    updated_at
+`
+
+type UpdateCustomRoleParams struct {
+	Name        string      `json:"name"`
+	Description *string     `json:"description"`
+	TenantID    pgtype.UUID `json:"tenant_id"`
+	RoleID      pgtype.UUID `json:"role_id"`
+}
+
+func (q *Queries) UpdateCustomRole(ctx context.Context, arg UpdateCustomRoleParams) (Role, error) {
+	row := q.db.QueryRow(ctx, updateCustomRole,
+		arg.Name,
+		arg.Description,
+		arg.TenantID,
+		arg.RoleID,
+	)
+	var i Role
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.RoleKey,
+		&i.Name,
+		&i.Description,
+		&i.IsSystem,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

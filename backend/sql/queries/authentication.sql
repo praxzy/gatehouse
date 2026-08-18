@@ -109,3 +109,34 @@ RETURNING
     is_system,
     created_at,
     updated_at;
+
+-- name: GrantOwnerRolePermissions :exec
+INSERT INTO role_permissions (
+    tenant_id,
+    role_id,
+    permission
+)
+SELECT
+    sqlc.arg(tenant_id),
+    sqlc.arg(role_id),
+    permission
+FROM permission_catalog
+ON CONFLICT DO NOTHING;
+
+
+-- name: GrantMemberRolePermissions :exec
+INSERT INTO role_permissions (
+    tenant_id,
+    role_id,
+    permission
+)
+SELECT
+    sqlc.arg(tenant_id),
+    sqlc.arg(role_id),
+    permission
+FROM permission_catalog
+WHERE permission IN (
+    'tenant.read',
+    'member.read'
+)
+ON CONFLICT DO NOTHING;

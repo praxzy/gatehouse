@@ -12,12 +12,14 @@ import (
 
 type Querier interface {
 	ActivateTOTPCredential(ctx context.Context, arg ActivateTOTPCredentialParams) (int64, error)
+	AddRolePermission(ctx context.Context, arg AddRolePermissionParams) error
 	AssignRoleToMembership(ctx context.Context, arg AssignRoleToMembershipParams) error
 	ConsumeMFARecoveryCode(ctx context.Context, arg ConsumeMFARecoveryCodeParams) (int64, error)
 	ConsumeTOTPTimeStep(ctx context.Context, arg ConsumeTOTPTimeStepParams) (int64, error)
 	CountActiveOwners(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountAvailableMFARecoveryCodes(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CreateActiveMembership(ctx context.Context, arg CreateActiveMembershipParams) (Membership, error)
+	CreateCustomRole(ctx context.Context, arg CreateCustomRoleParams) (Role, error)
 	CreateMFARecoveryCode(ctx context.Context, arg CreateMFARecoveryCodeParams) error
 	CreateMemberRole(ctx context.Context, tenantID pgtype.UUID) (Role, error)
 	CreateOwnerMembership(ctx context.Context, arg CreateOwnerMembershipParams) (Membership, error)
@@ -28,8 +30,10 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	CreateUserForInvitation(ctx context.Context, arg CreateUserForInvitationParams) (User, error)
 	DeleteMembershipRoles(ctx context.Context, arg DeleteMembershipRolesParams) error
+	DeleteRolePermissions(ctx context.Context, arg DeleteRolePermissionsParams) error
 	GetActiveMembershipForSessionCreation(ctx context.Context, arg GetActiveMembershipForSessionCreationParams) (GetActiveMembershipForSessionCreationRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)
+	GetCustomRoleForUpdate(ctx context.Context, arg GetCustomRoleForUpdateParams) (Role, error)
 	GetMembershipByID(ctx context.Context, arg GetMembershipByIDParams) (Membership, error)
 	GetMembershipByUserID(ctx context.Context, arg GetMembershipByUserIDParams) (Membership, error)
 	GetMembershipForUpdate(ctx context.Context, arg GetMembershipForUpdateParams) (Membership, error)
@@ -41,13 +45,17 @@ type Querier interface {
 	GetTenantMembershipByEmail(ctx context.Context, arg GetTenantMembershipByEmailParams) (Membership, error)
 	GetUnverifiedUserByEmail(ctx context.Context, email string) (GetUnverifiedUserByEmailRow, error)
 	GetUserForInvitationAcceptance(ctx context.Context, email string) (GetUserForInvitationAcceptanceRow, error)
+	GrantMemberRolePermissions(ctx context.Context, arg GrantMemberRolePermissionsParams) error
+	GrantOwnerRolePermissions(ctx context.Context, arg GrantOwnerRolePermissionsParams) error
 	IsOwnerMembership(ctx context.Context, arg IsOwnerMembershipParams) (bool, error)
 	ListMemberships(ctx context.Context, tenantID pgtype.UUID) ([]Membership, error)
 	ListOpenMembershipInvitations(ctx context.Context, tenantID pgtype.UUID) ([]ListOpenMembershipInvitationsRow, error)
+	ListPermissionCatalog(ctx context.Context) ([]PermissionCatalog, error)
 	ListRolePermissions(ctx context.Context, arg ListRolePermissionsParams) ([]string, error)
 	ListRoles(ctx context.Context, tenantID pgtype.UUID) ([]Role, error)
 	ListRolesForMembership(ctx context.Context, arg ListRolesForMembershipParams) ([]Role, error)
 	ListTenantMembers(ctx context.Context, tenantID pgtype.UUID) ([]ListTenantMembersRow, error)
+	ListTenantRolesWithPermissions(ctx context.Context, tenantID pgtype.UUID) ([]ListTenantRolesWithPermissionsRow, error)
 	LockOwnerRoleForUpdate(ctx context.Context, tenantID pgtype.UUID) (pgtype.UUID, error)
 	MarkMembershipInvitationAccepted(ctx context.Context, arg MarkMembershipInvitationAcceptedParams) (MembershipInvitation, error)
 	MarkUserEmailVerifiedFromInvitation(ctx context.Context, userID pgtype.UUID) (int64, error)
@@ -56,6 +64,7 @@ type Querier interface {
 	RevokeSessionByID(ctx context.Context, arg RevokeSessionByIDParams) (int64, error)
 	RevokeSessionByTokenHash(ctx context.Context, arg RevokeSessionByTokenHashParams) (int64, error)
 	RevokeSessionsForMembership(ctx context.Context, arg RevokeSessionsForMembershipParams) (int64, error)
+	UpdateCustomRole(ctx context.Context, arg UpdateCustomRoleParams) (Role, error)
 	UpdateMembershipStatus(ctx context.Context, arg UpdateMembershipStatusParams) (Membership, error)
 	UpsertEmailVerificationToken(ctx context.Context, arg UpsertEmailVerificationTokenParams) (EmailVerificationToken, error)
 	UpsertMembershipInvitation(ctx context.Context, arg UpsertMembershipInvitationParams) (MembershipInvitation, error)

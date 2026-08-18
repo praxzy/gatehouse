@@ -128,19 +128,16 @@ SELECT
     u.display_name,
     t.name AS tenant_name,
     t.slug AS tenant_slug,
-        EXISTS (
-        SELECT 1
-        FROM membership_roles AS capability_membership_role
-        JOIN roles AS capability_role
-          ON capability_role.tenant_id =
-             capability_membership_role.tenant_id
-         AND capability_role.id =
-             capability_membership_role.role_id
-        WHERE capability_membership_role.tenant_id = s.tenant_id
-          AND capability_membership_role.membership_id =
-              s.membership_id
-          AND capability_role.role_key = 'owner'
-    )::boolean AS can_manage_members,
+        ARRAY(
+          SELECT DISTINCT role_permission.permission
+          FROM membership_roles AS session_role
+          JOIN role_permissions AS role_permission
+            ON role_permission.tenant_id = session_role.tenant_id
+          AND role_permission.role_id = session_role.role_id
+          WHERE session_role.tenant_id = s.tenant_id
+            AND session_role.membership_id = s.membership_id
+          ORDER BY role_permission.permission
+    )::text[] AS permissions, 
     (
         t.mfa_required
         OR EXISTS (
@@ -186,7 +183,7 @@ type GetActiveSessionByTokenHashRow struct {
 	DisplayName         string             `json:"display_name"`
 	TenantName          string             `json:"tenant_name"`
 	TenantSlug          string             `json:"tenant_slug"`
-	CanManageMembers    bool               `json:"can_manage_members"`
+	Permissions         []string           `json:"permissions"`
 	MfaRequired         bool               `json:"mfa_required"`
 	MfaEnrolled         bool               `json:"mfa_enrolled"`
 }
@@ -206,7 +203,7 @@ func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, tokenHash []b
 		&i.DisplayName,
 		&i.TenantName,
 		&i.TenantSlug,
-		&i.CanManageMembers,
+		&i.Permissions,
 		&i.MfaRequired,
 		&i.MfaEnrolled,
 	)
