@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { CurrentUser } from '@/api/auth'
 import { currentUserQueryKey } from '@/auth/currentUser'
+import { flushInputOTPTimers } from '@/test/inputOTP'
 import { renderWithProviders, createTestQueryClient } from '@/test/render'
 import { MFAChallengePage } from './MFAChallengePage'
 
@@ -18,6 +19,7 @@ const passwordSession: CurrentUser = {
   mfa_required: true,
   mfa_enrolled: true,
   fully_authenticated: false,
+  permissions: [],
   capabilities: { manage_members: false },
 }
 
@@ -72,5 +74,7 @@ describe('MFAChallengePage', () => {
         credentials: 'include',
       }),
     )
+
+    await flushInputOTPTimers()
   })
 })

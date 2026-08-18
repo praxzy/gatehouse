@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { CurrentUser } from '@/api/auth'
 import { currentUserQueryKey } from '@/auth/currentUser'
+import { flushInputOTPTimers } from '@/test/inputOTP'
 import { createTestQueryClient, renderWithProviders } from '@/test/render'
 import { MFAEnrollmentPage } from './MFAEnrollmentPage'
 
@@ -18,6 +19,7 @@ const passwordSession: CurrentUser = {
   mfa_required: true,
   mfa_enrolled: false,
   fully_authenticated: false,
+  permissions: [],
   capabilities: { manage_members: false },
 }
 
@@ -71,6 +73,8 @@ describe('MFAEnrollmentPage', () => {
     expect(screen.queryByText('Setup key expired')).not.toBeInTheDocument()
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    await flushInputOTPTimers()
   })
 })
 
