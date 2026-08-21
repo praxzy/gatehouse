@@ -8,6 +8,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Application struct {
+	ID                    pgtype.UUID        `json:"id"`
+	TenantID              pgtype.UUID        `json:"tenant_id"`
+	Name                  string             `json:"name"`
+	Description           *string            `json:"description"`
+	ClientID              string             `json:"client_id"`
+	ClientType            string             `json:"client_type"`
+	ClientSecretHash      []byte             `json:"client_secret_hash"`
+	ClientSecretCreatedAt pgtype.Timestamptz `json:"client_secret_created_at"`
+	Status                string             `json:"status"`
+	AccessMode            string             `json:"access_mode"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ApplicationAccess struct {
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	ApplicationID pgtype.UUID        `json:"application_id"`
+	RoleID        pgtype.UUID        `json:"role_id"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
 type EmailVerificationToken struct {
 	UserID     pgtype.UUID        `json:"user_id"`
 	TokenHash  []byte             `json:"token_hash"`
@@ -65,6 +87,14 @@ type PermissionCatalog struct {
 	Permission  string `json:"permission"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+}
+
+type RedirectUri struct {
+	ID            pgtype.UUID        `json:"id"`
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	ApplicationID pgtype.UUID        `json:"application_id"`
+	Uri           string             `json:"uri"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 type Role struct {

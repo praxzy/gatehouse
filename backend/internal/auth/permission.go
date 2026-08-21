@@ -1,11 +1,13 @@
 package auth
 
 const (
-	PermissionTenantRead   = "tenant.read"
-	PermissionMemberRead   = "member.read"
-	PermissionMemberManage = "member.manage"
-	PermissionRoleRead     = "role.read"
-	PermissionRoleManage   = "role.manage"
+	PermissionTenantRead        = "tenant.read"
+	PermissionMemberRead        = "member.read"
+	PermissionMemberManage      = "member.manage"
+	PermissionRoleRead          = "role.read"
+	PermissionRoleManage        = "role.manage"
+	PermissionApplicationRead   = "application.read"
+	PermissionApplicationManage = "application.manage"
 )
 
 func (session SessionContext) HasPermission(

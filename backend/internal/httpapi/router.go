@@ -11,6 +11,7 @@ import (
 
 type Dependencies struct {
 	Authentication AuthenticationService
+	Applications   ApplicationService
 	SessionCookie  SessionCookie
 }
 
@@ -28,6 +29,9 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		handler := authHandler{
 			authentication: dependencies.Authentication,
 			sessionCookie:  dependencies.SessionCookie,
+		}
+		applicationHandler := applicationHandler{
+			applications: dependencies.Applications,
 		}
 
 		router.Route("/api/v1/invitations", func(router chi.Router) {
@@ -89,6 +93,35 @@ func NewRouter(dependencies Dependencies) http.Handler {
 				"/api/v1/roles/{roleID}",
 				handler.updateRole,
 			)
+
+			if dependencies.Applications != nil {
+				router.With(
+					requirePermission(
+						auth.PermissionApplicationRead,
+					),
+				).Get(
+					"/api/v1/applications",
+					applicationHandler.listApplications,
+				)
+
+				router.With(
+					requirePermission(
+						auth.PermissionApplicationManage,
+					),
+				).Post(
+					"/api/v1/applications",
+					applicationHandler.createApplication,
+				)
+
+				router.With(
+					requirePermission(
+						auth.PermissionApplicationRead,
+					),
+				).Get(
+					"/api/v1/applications/{applicationID}",
+					applicationHandler.getApplication,
+				)
+			}
 		})
 
 		router.Route("/api/v1/auth", func(router chi.Router) {

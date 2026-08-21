@@ -12,6 +12,8 @@ import (
 
 type Querier interface {
 	ActivateTOTPCredential(ctx context.Context, arg ActivateTOTPCredentialParams) (int64, error)
+	AddApplicationAccessRole(ctx context.Context, arg AddApplicationAccessRoleParams) error
+	AddApplicationRedirectURI(ctx context.Context, arg AddApplicationRedirectURIParams) (RedirectUri, error)
 	AddRolePermission(ctx context.Context, arg AddRolePermissionParams) error
 	AssignRoleToMembership(ctx context.Context, arg AssignRoleToMembershipParams) error
 	ConsumeMFARecoveryCode(ctx context.Context, arg ConsumeMFARecoveryCodeParams) (int64, error)
@@ -19,6 +21,7 @@ type Querier interface {
 	CountActiveOwners(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountAvailableMFARecoveryCodes(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CreateActiveMembership(ctx context.Context, arg CreateActiveMembershipParams) (Membership, error)
+	CreateApplication(ctx context.Context, arg CreateApplicationParams) (CreateApplicationRow, error)
 	CreateCustomRole(ctx context.Context, arg CreateCustomRoleParams) (Role, error)
 	CreateMFARecoveryCode(ctx context.Context, arg CreateMFARecoveryCodeParams) error
 	CreateMemberRole(ctx context.Context, tenantID pgtype.UUID) (Role, error)
@@ -33,6 +36,7 @@ type Querier interface {
 	DeleteRolePermissions(ctx context.Context, arg DeleteRolePermissionsParams) error
 	GetActiveMembershipForSessionCreation(ctx context.Context, arg GetActiveMembershipForSessionCreationParams) (GetActiveMembershipForSessionCreationRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)
+	GetApplicationByID(ctx context.Context, arg GetApplicationByIDParams) (GetApplicationByIDRow, error)
 	GetCustomRoleForUpdate(ctx context.Context, arg GetCustomRoleForUpdateParams) (Role, error)
 	GetMembershipByID(ctx context.Context, arg GetMembershipByIDParams) (Membership, error)
 	GetMembershipByUserID(ctx context.Context, arg GetMembershipByUserIDParams) (Membership, error)
@@ -48,6 +52,9 @@ type Querier interface {
 	GrantMemberRolePermissions(ctx context.Context, arg GrantMemberRolePermissionsParams) error
 	GrantOwnerRolePermissions(ctx context.Context, arg GrantOwnerRolePermissionsParams) error
 	IsOwnerMembership(ctx context.Context, arg IsOwnerMembershipParams) (bool, error)
+	ListApplicationAccessRoles(ctx context.Context, arg ListApplicationAccessRolesParams) ([]ListApplicationAccessRolesRow, error)
+	ListApplicationRedirectURIs(ctx context.Context, arg ListApplicationRedirectURIsParams) ([]RedirectUri, error)
+	ListApplications(ctx context.Context, tenantID pgtype.UUID) ([]ListApplicationsRow, error)
 	ListMemberships(ctx context.Context, tenantID pgtype.UUID) ([]Membership, error)
 	ListOpenMembershipInvitations(ctx context.Context, tenantID pgtype.UUID) ([]ListOpenMembershipInvitationsRow, error)
 	ListPermissionCatalog(ctx context.Context) ([]PermissionCatalog, error)

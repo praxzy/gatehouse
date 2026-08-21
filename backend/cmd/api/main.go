@@ -16,8 +16,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/praxzy/gatehouse/backend/internal/application"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
-
 	"github.com/praxzy/gatehouse/backend/internal/httpapi"
 )
 
@@ -100,6 +100,14 @@ func run() error {
 		)
 	}
 
+	applications, err := application.NewService(pool)
+	if err != nil {
+		return fmt.Errorf(
+			"create application service: %w",
+			err,
+		)
+	}
+
 	cookieSecure, err := sessionCookieSecure()
 	if err != nil {
 		return err
@@ -110,6 +118,7 @@ func run() error {
 		Handler: httpapi.NewRouter(
 			httpapi.Dependencies{
 				Authentication: authentication,
+				Applications:   applications,
 				SessionCookie: httpapi.NewSessionCookie(
 					cookieSecure,
 				),
