@@ -108,6 +108,11 @@ func run() error {
 		)
 	}
 
+	oidcProvider, err := oidcProviderFromEnvironment()
+	if err != nil {
+		return err
+	}
+
 	cookieSecure, err := sessionCookieSecure()
 	if err != nil {
 		return err
@@ -119,6 +124,7 @@ func run() error {
 			httpapi.Dependencies{
 				Authentication: authentication,
 				Applications:   applications,
+				OIDCMetadata:   oidcProvider,
 				SessionCookie: httpapi.NewSessionCookie(
 					cookieSecure,
 				),

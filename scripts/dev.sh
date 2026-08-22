@@ -20,6 +20,9 @@ required_variables=(
     MFA_ENCRYPTION_KEY_BASE64
     EMAIL_DELIVERY_MODE
     WEB_APP_URL
+    OIDC_ISSUER
+    OIDC_SIGNING_KEY_ID
+    OIDC_SIGNING_PRIVATE_KEY_FILE
 )
 
 for variable in "${required_variables[@]}"; do
