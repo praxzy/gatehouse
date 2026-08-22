@@ -12,6 +12,7 @@ import (
 type Dependencies struct {
 	Authentication AuthenticationService
 	Applications   ApplicationService
+	OIDCMetadata   OIDCMetadataService
 	SessionCookie  SessionCookie
 }
 
@@ -24,6 +25,21 @@ func NewRouter(dependencies Dependencies) http.Handler {
 	router.Use(attachRequestID)
 
 	router.Get("/healthz", healthz)
+
+	if dependencies.OIDCMetadata != nil {
+		handler := oidcHandler{
+			metadata: dependencies.OIDCMetadata,
+		}
+
+		router.Get(
+			"/.well-known/openid-configuration",
+			handler.discovery,
+		)
+		router.Get(
+			"/.well-known/jwks.json",
+			handler.jwks,
+		)
+	}
 
 	if dependencies.Authentication != nil {
 		handler := authHandler{
