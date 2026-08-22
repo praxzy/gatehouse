@@ -5,16 +5,17 @@ import { membersQueryKey } from '@/members/queries'
 
 export const rolesQueryKey = ['roles'] as const
 
-export function rolesQueryOptions() {
+export function rolesQueryOptions(enabled = true) {
   return queryOptions({
     queryKey: rolesQueryKey,
     queryFn: ({ signal }) => getRoles(signal),
     staleTime: 10_000,
+    enabled,
   })
 }
 
-export function useRoles() {
-  return useQuery(rolesQueryOptions())
+export function useRoles(enabled = true) {
+  return useQuery(rolesQueryOptions(enabled))
 }
 
 export function useCreateRole() {

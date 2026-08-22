@@ -75,6 +75,18 @@ const RolesPage = lazy(() =>
   })),
 )
 
+const ApplicationsPage = lazy(() =>
+  import('./pages/ApplicationsPage').then((module) => ({
+    default: module.ApplicationsPage,
+  })),
+)
+
+const ApplicationDetailPage = lazy(() =>
+  import('./pages/ApplicationDetailPage').then((module) => ({
+    default: module.ApplicationDetailPage,
+  })),
+)
+
 function App() {
   return (
     <Suspense fallback={<RouteLoading />}>
@@ -104,6 +116,15 @@ function App() {
 
             <Route element={<RequirePermission permission={permissions.roleRead} />}>
               <Route path="/app/roles" element={<RolesPage />} />
+
+              <Route element={<RequirePermission permission={permissions.applicationRead} />}>
+                <Route path="/app/applications" element={<ApplicationsPage />} />
+
+                <Route
+                  path="/app/applications/:applicationId"
+                  element={<ApplicationDetailPage />}
+                />
+              </Route>
             </Route>
           </Route>
         </Route>

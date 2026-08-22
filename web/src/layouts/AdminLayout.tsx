@@ -45,6 +45,7 @@ type NavigationItem = {
   icon: LucideIcon
   to?: string
   requires?: Permission
+  exact?: boolean
 }
 
 const navigation: NavigationItem[] = [
@@ -52,6 +53,7 @@ const navigation: NavigationItem[] = [
     label: 'Overview',
     icon: LayoutDashboard,
     to: '/app',
+    exact: true,
   },
   {
     label: 'Directory',
@@ -68,6 +70,8 @@ const navigation: NavigationItem[] = [
   {
     label: 'Applications',
     icon: AppWindow,
+    to: '/app/applications',
+    requires: permissions.applicationRead,
   },
   {
     label: 'Audit activity',
@@ -257,7 +261,7 @@ export function AdminLayout() {
                 {item.to ? (
                   <NavLink
                     to={item.to}
-                    end
+                    end={item.exact}
                     aria-label={sidebarCollapsed ? item.label : undefined}
                     title={sidebarCollapsed ? item.label : undefined}
                     className={({ isActive }) =>
@@ -451,7 +455,7 @@ export function AdminLayout() {
                       {item.to ? (
                         <NavLink
                           to={item.to}
-                          end
+                          end={item.exact}
                           onClick={() => setMobileNavigationOpen(false)}
                           className={({ isActive }) =>
                             cn(

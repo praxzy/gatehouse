@@ -4,6 +4,8 @@ export const permissions = {
   memberManage: 'member.manage',
   roleRead: 'role.read',
   roleManage: 'role.manage',
+  applicationRead: 'application.read',
+  applicationManage: 'application.manage',
 } as const
 
 export type Permission = (typeof permissions)[keyof typeof permissions]
