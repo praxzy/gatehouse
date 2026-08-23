@@ -30,6 +30,22 @@ type ApplicationAccess struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
+type AuthorizationTransaction struct {
+	ID                  pgtype.UUID        `json:"id"`
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	ApplicationID       pgtype.UUID        `json:"application_id"`
+	ClientID            string             `json:"client_id"`
+	RedirectUri         string             `json:"redirect_uri"`
+	StateHash           []byte             `json:"state_hash"`
+	Nonce               string             `json:"nonce"`
+	CodeChallenge       string             `json:"code_challenge"`
+	CodeChallengeMethod string             `json:"code_challenge_method"`
+	RequestedScope      []string           `json:"requested_scope"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
+	ConsumedAt          pgtype.Timestamptz `json:"consumed_at"`
+}
+
 type EmailVerificationToken struct {
 	UserID     pgtype.UUID        `json:"user_id"`
 	TokenHash  []byte             `json:"token_hash"`

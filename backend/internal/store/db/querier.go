@@ -22,6 +22,7 @@ type Querier interface {
 	CountAvailableMFARecoveryCodes(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CreateActiveMembership(ctx context.Context, arg CreateActiveMembershipParams) (Membership, error)
 	CreateApplication(ctx context.Context, arg CreateApplicationParams) (CreateApplicationRow, error)
+	CreateAuthorizationTransaction(ctx context.Context, arg CreateAuthorizationTransactionParams) (AuthorizationTransaction, error)
 	CreateCustomRole(ctx context.Context, arg CreateCustomRoleParams) (Role, error)
 	CreateMFARecoveryCode(ctx context.Context, arg CreateMFARecoveryCodeParams) error
 	CreateMemberRole(ctx context.Context, tenantID pgtype.UUID) (Role, error)
@@ -34,9 +35,11 @@ type Querier interface {
 	CreateUserForInvitation(ctx context.Context, arg CreateUserForInvitationParams) (User, error)
 	DeleteMembershipRoles(ctx context.Context, arg DeleteMembershipRolesParams) error
 	DeleteRolePermissions(ctx context.Context, arg DeleteRolePermissionsParams) error
+	GetActiveApplicationForAuthorization(ctx context.Context, arg GetActiveApplicationForAuthorizationParams) (GetActiveApplicationForAuthorizationRow, error)
 	GetActiveMembershipForSessionCreation(ctx context.Context, arg GetActiveMembershipForSessionCreationParams) (GetActiveMembershipForSessionCreationRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)
 	GetApplicationByID(ctx context.Context, arg GetApplicationByIDParams) (GetApplicationByIDRow, error)
+	GetAuthorizationTransactionByIDAndStateHash(ctx context.Context, arg GetAuthorizationTransactionByIDAndStateHashParams) (GetAuthorizationTransactionByIDAndStateHashRow, error)
 	GetCustomRoleForUpdate(ctx context.Context, arg GetCustomRoleForUpdateParams) (Role, error)
 	GetMembershipByID(ctx context.Context, arg GetMembershipByIDParams) (Membership, error)
 	GetMembershipByUserID(ctx context.Context, arg GetMembershipByUserIDParams) (Membership, error)
