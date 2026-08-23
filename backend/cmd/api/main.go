@@ -19,6 +19,7 @@ import (
 	"github.com/praxzy/gatehouse/backend/internal/application"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	"github.com/praxzy/gatehouse/backend/internal/httpapi"
+	"github.com/praxzy/gatehouse/backend/internal/oidc"
 )
 
 const defaultHTTPAddress = ":8080"
@@ -113,6 +114,14 @@ func run() error {
 		return err
 	}
 
+	oidcAuthorization, err := oidc.NewAuthorizationService(pool)
+	if err != nil {
+		return fmt.Errorf(
+			"create OIDC authorization service: %w",
+			err,
+		)
+	}
+
 	cookieSecure, err := sessionCookieSecure()
 	if err != nil {
 		return err
@@ -128,6 +137,7 @@ func run() error {
 				SessionCookie: httpapi.NewSessionCookie(
 					cookieSecure,
 				),
+				OIDCAuthorization: oidcAuthorization,
 			},
 		),
 		ReadHeaderTimeout: 5 * time.Second,

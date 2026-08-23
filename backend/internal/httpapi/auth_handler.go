@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -19,7 +20,7 @@ import (
 )
 
 const maxAuthenticationBodyBytes = 64 * 1024
-const timeFormat = "2006-01-02T15:04:05Z07:00"
+const timeFormat = time.RFC3339
 
 type AuthenticationService interface {
 	Register(
