@@ -793,6 +793,7 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 			requireAuthorizationGrant(
 				t,
 				response,
+				"owner-sso-state-0123456789",
 			)
 		},
 	)
@@ -890,6 +891,7 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 			requireAuthorizationGrant(
 				t,
 				grantedResponse,
+				"owner-mfa-state-0123456789",
 			)
 		},
 	)
@@ -1186,57 +1188,83 @@ func requireAuthorizationFlowRedirect(
 func requireAuthorizationGrant(
 	t *testing.T,
 	response *http.Response,
-) {
+	expectedState string,
+) string {
 	t.Helper()
 
-	body := requireResponseStatus(
+	requireResponseStatus(
 		t,
 		response,
-		http.StatusOK,
+		http.StatusFound,
 	)
 
-	if location := response.Header.Get("Location"); location != "" {
-		t.Fatalf(
-			"granted authorization unexpectedly redirected to %q",
-			location,
+	location := response.Header.Get("Location")
+	if location == "" {
+		t.Fatal(
+			"authorization grant omitted callback redirect",
 		)
 	}
 
-	var result struct {
-		Status        string `json:"status"`
-		TransactionID string `json:"transaction_id"`
-		Application   struct {
-			ClientID string `json:"client_id"`
-		} `json:"application"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
+	destination, err := url.Parse(location)
+	if err != nil {
 		t.Fatalf(
-			"decode authorization grant: %v",
+			"parse authorization callback: %v",
 			err,
 		)
 	}
 
-	if result.Status != "granted" {
+	expectedDestination, err := url.Parse(
+		testAuthorizationRedirect,
+	)
+	if err != nil {
 		t.Fatalf(
-			"expected granted status, got %q",
-			result.Status,
+			"parse expected callback: %v",
+			err,
 		)
 	}
 
-	if result.TransactionID == "" {
+	if destination.Scheme != expectedDestination.Scheme ||
+		destination.Host != expectedDestination.Host ||
+		destination.Path != expectedDestination.Path {
+		t.Fatalf(
+			"authorization code redirected to unexpected callback %q",
+			location,
+		)
+	}
+
+	query := destination.Query()
+
+	if query.Get("source") != "gatehouse" {
 		t.Fatal(
-			"authorization grant omitted transaction ID",
+			"registered callback query was not preserved",
 		)
 	}
 
-	if result.Application.ClientID !=
-		testAuthorizationClientID {
+	if query.Get("state") != expectedState {
 		t.Fatalf(
-			"unexpected granted client ID %q",
-			result.Application.ClientID,
+			"expected state %q, got %q",
+			expectedState,
+			query.Get("state"),
 		)
 	}
+
+	code := query.Get("code")
+	if len(code) != 48 ||
+		code[:5] != "ghac_" {
+		t.Fatalf(
+			"authorization callback contained malformed code %q",
+			code,
+		)
+	}
+
+	if query.Get("error") != "" {
+		t.Fatalf(
+			"successful authorization included error %q",
+			query.Get("error"),
+		)
+	}
+
+	return code
 }
 
 func authorizationContinuationTargetForTest(

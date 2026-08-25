@@ -33,6 +33,9 @@ var (
 	ErrAuthorizationTransactionConsumed = errors.New(
 		"authorization transaction already consumed",
 	)
+	ErrAuthorizationGrantUnavailable = errors.New(
+		"authorization grant unavailable",
+	)
 )
 
 type AuthorizationService struct {
@@ -207,7 +210,6 @@ func (service *AuthorizationService) LoadAuthorization(
 		return PendingAuthorization{},
 			fmt.Errorf("load authorization transaction: %w", err)
 	}
-
 
 	if transaction.ConsumedAt.Valid {
 		return PendingAuthorization{},

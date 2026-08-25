@@ -34,9 +34,10 @@ type AuthorizationSession struct {
 }
 
 type AuthorizationDecision struct {
-	Step          AuthorizationStep
-	Authorization PendingAuthorization
-	Session       AuthorizationSession
+	Step              AuthorizationStep
+	Authorization     PendingAuthorization
+	Session           AuthorizationSession
+	AuthorizationCode string
 }
 
 func (service *AuthorizationService) ContinueAuthorization(
@@ -107,9 +108,9 @@ func (service *AuthorizationService) ContinueAuthorization(
 		return decision, nil
 	}
 
-	if !evaluation.AccessGranted {
-		stateHash := sha256.Sum256([]byte(state))
+	stateHash := sha256.Sum256([]byte(state))
 
+	if !evaluation.AccessGranted {
 		affected, err :=
 			service.queries.ConsumeDeniedAuthorizationTransaction(
 				ctx,
@@ -137,7 +138,46 @@ func (service *AuthorizationService) ContinueAuthorization(
 		return decision, nil
 	}
 
+	rawCode, codeHash, err :=
+		generateAuthorizationCode()
+	if err != nil {
+		return AuthorizationDecision{}, err
+	}
+
+	_, err = service.queries.IssueAuthorizationCode(
+		ctx,
+		store.IssueAuthorizationCodeParams{
+			CodeHash: codeHash,
+			CodeExpiresAt: pgtype.Timestamptz{
+				Time: service.now().
+					UTC().
+					Add(authorizationCodeLifetime),
+				Valid: true,
+			},
+			SessionID:     session.SessionID,
+			MembershipID:  session.MembershipID,
+			UserID:        session.UserID,
+			TransactionID: authorization.TransactionID,
+			TenantID:      authorization.TenantID,
+			ApplicationID: authorization.ApplicationID,
+			StateHash:     stateHash[:],
+		},
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AuthorizationDecision{},
+			ErrAuthorizationGrantUnavailable
+	}
+	if err != nil {
+		return AuthorizationDecision{},
+			fmt.Errorf(
+				"issue authorization code: %w",
+				err,
+			)
+	}
+
 	decision.Step = AuthorizationStepGranted
+	decision.AuthorizationCode = rawCode
+
 	return decision, nil
 }
 

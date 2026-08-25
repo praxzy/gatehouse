@@ -44,20 +44,6 @@ type oidcHandler struct {
 	sessionCookie  SessionCookie
 }
 
-type authorizationApplicationResponse struct {
-	Name       string `json:"name"`
-	ClientID   string `json:"client_id"`
-	AccessMode string `json:"access_mode"`
-}
-
-type authorizationTransactionResponse struct {
-	Status         string                           `json:"status"`
-	TransactionID  string                           `json:"transaction_id"`
-	Application    authorizationApplicationResponse `json:"application"`
-	RequestedScope []string                         `json:"requested_scope"`
-	ExpiresAt      string                           `json:"expires_at"`
-}
-
 func (handler oidcHandler) discovery(
 	writer http.ResponseWriter,
 	_ *http.Request,
@@ -246,9 +232,11 @@ func (handler oidcHandler) advanceAuthorization(
 		)
 
 	case oidc.AuthorizationStepGranted:
-		writeAuthorizationGrant(
+		redirectAuthorizationCode(
 			writer,
 			decision.Authorization,
+			decision.AuthorizationCode,
+			state,
 		)
 
 	default:
@@ -294,29 +282,6 @@ func (handler oidcHandler) resolveAuthorizationSession(
 		MembershipID: session.MembershipID,
 		UserID:       session.UserID,
 	}, nil
-}
-
-func writeAuthorizationGrant(
-	writer http.ResponseWriter,
-	authorization oidc.PendingAuthorization,
-) {
-	writeJSON(
-		writer,
-		http.StatusOK,
-		authorizationTransactionResponse{
-			Status:        "granted",
-			TransactionID: formatUUID(authorization.TransactionID),
-			Application: authorizationApplicationResponse{
-				Name:       authorization.ApplicationName,
-				ClientID:   authorization.ClientID,
-				AccessMode: authorization.AccessMode,
-			},
-			RequestedScope: authorization.RequestedScope,
-			ExpiresAt: authorization.ExpiresAt.UTC().Format(
-				timeFormat,
-			),
-		},
-	)
 }
 
 func (handler oidcHandler) writeAuthorizationError(
@@ -377,6 +342,10 @@ func writeAuthorizationContinuationError(
 		errors.Is(
 			err,
 			oidc.ErrAuthorizationClientUnavailable,
+		),
+		errors.Is(
+			err,
+			oidc.ErrAuthorizationGrantUnavailable,
 		):
 		writeError(
 			writer,
@@ -473,6 +442,35 @@ func redirectAuthorizationError(
 		query.Set("state", protocolError.State)
 	}
 
+	destination.RawQuery = query.Encode()
+
+	redirectNoStore(
+		writer,
+		destination.String(),
+	)
+}
+
+func redirectAuthorizationCode(
+	writer http.ResponseWriter,
+	authorization oidc.PendingAuthorization,
+	code string,
+	state string,
+) {
+	destination, err := url.Parse(
+		authorization.RedirectURI,
+	)
+	if err != nil {
+		writeError(
+			writer,
+			http.StatusInternalServerError,
+			"internal error",
+		)
+		return
+	}
+
+	query := destination.Query()
+	query.Set("code", code)
+	query.Set("state", state)
 	destination.RawQuery = query.Encode()
 
 	redirectNoStore(
