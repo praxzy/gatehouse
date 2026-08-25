@@ -1,6 +1,6 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { Route, Routes, useLocation } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import type { CurrentUser } from '@/api/auth'
 import { RequireFullyAuthenticated, RequirePermission, PublicOnlyRoute } from './routeGuards'
 import { renderWithProviders } from '@/test/render'
@@ -23,12 +23,6 @@ const authenticatedUser: CurrentUser = {
   capabilities: { manage_members: false },
 }
 
-function LocationProbe() {
-  const location = useLocation()
-
-  return <p>{location.pathname + location.search}</p>
-}
-
 describe('PublicOnlyRoute', () => {
   it('continues an existing SSO session to the requested authorization transaction', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
@@ -44,21 +38,22 @@ describe('PublicOnlyRoute', () => {
 
     const returnTo =
       '/oauth/authorize/continue?transaction_id=transaction-123&state=state-0123456789'
+    const browserNavigate = vi.fn()
 
     renderWithProviders(
       <Routes>
-        <Route element={<PublicOnlyRoute />}>
+        <Route element={<PublicOnlyRoute browserNavigate={browserNavigate} />}>
           <Route path="/login" element={<p>Login page</p>} />
         </Route>
-
-        <Route path="/oauth/authorize/continue" element={<LocationProbe />} />
       </Routes>,
       {
         route: `/login?return_to=${encodeURIComponent(returnTo)}`,
       },
     )
 
-    expect(await screen.findByText(returnTo)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(browserNavigate).toHaveBeenCalledWith(returnTo)
+    })
     expect(screen.queryByText('Login page')).not.toBeInTheDocument()
   })
 
@@ -76,14 +71,13 @@ describe('PublicOnlyRoute', () => {
 
     const returnTo =
       '/oauth/authorize/continue?transaction_id=transaction-456&state=state-9876543210'
+    const browserNavigate = vi.fn()
 
     renderWithProviders(
       <Routes>
-        <Route element={<PublicOnlyRoute />}>
+        <Route element={<PublicOnlyRoute browserNavigate={browserNavigate} />}>
           <Route path="/login" element={<p>Login page</p>} />
         </Route>
-
-        <Route path="/oauth/authorize/continue" element={<LocationProbe />} />
       </Routes>,
       {
         route: `/login?force=1&tenant_slug=beta&return_to=` + encodeURIComponent(returnTo),
@@ -91,7 +85,7 @@ describe('PublicOnlyRoute', () => {
     )
 
     expect(await screen.findByText('Login page')).toBeInTheDocument()
-    expect(screen.queryByText(returnTo)).not.toBeInTheDocument()
+    expect(browserNavigate).not.toHaveBeenCalled()
   })
 })
 

@@ -1,13 +1,18 @@
+import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { APIError, isServiceUnavailableError } from '@/api/client'
 import { ServiceUnavailablePage } from '@/components/ServiceUnavailablePage'
 import { Spinner } from '@/components/ui/spinner'
 import { useCurrentUser } from './currentUser'
-import { authenticatedDestination } from './routing'
+import { authenticatedDestination, isAuthorizationContinuation } from './routing'
 import type { Permission } from '@/auth/permissions'
 import { hasPermission } from '@/auth/permissions'
 
-export function PublicOnlyRoute() {
+export function PublicOnlyRoute({
+  browserNavigate = defaultBrowserNavigate,
+}: {
+  browserNavigate?: (destination: string) => void
+}) {
   const currentUser = useCurrentUser()
   const [searchParams] = useSearchParams()
 
@@ -31,12 +36,31 @@ export function PublicOnlyRoute() {
     return <Outlet />
   }
 
-  return (
-    <Navigate
-      to={authenticatedDestination(currentUser.data, searchParams.get('return_to'))}
-      replace
-    />
-  )
+  const destination = authenticatedDestination(currentUser.data, searchParams.get('return_to'))
+
+  if (isAuthorizationContinuation(destination)) {
+    return <BrowserRedirect destination={destination} navigate={browserNavigate} />
+  }
+
+  return <Navigate to={destination} replace />
+}
+
+function BrowserRedirect({
+  destination,
+  navigate,
+}: {
+  destination: string
+  navigate: (destination: string) => void
+}) {
+  useEffect(() => {
+    navigate(destination)
+  }, [destination, navigate])
+
+  return <AuthenticationLoading />
+}
+
+function defaultBrowserNavigate(destination: string) {
+  window.location.assign(destination)
 }
 
 export function RequireSession() {

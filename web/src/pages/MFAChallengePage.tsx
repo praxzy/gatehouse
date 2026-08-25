@@ -7,7 +7,7 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 import { completeRecoveryChallenge, completeTOTPChallenge } from '@/api/auth'
 import { currentUserQueryKey, currentUserQueryOptions, useCurrentUser } from '@/auth/currentUser'
-import { authenticatedDestination, safeReturnTo } from '@/auth/routing'
+import { authenticatedDestination, isAuthorizationContinuation, safeReturnTo } from '@/auth/routing'
 import { RequestError } from '@/components/RequestError'
 import { Button } from '@/components/ui/button'
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field'
@@ -95,7 +95,14 @@ export function MFAChallengePage() {
 
       const user = await queryClient.fetchQuery(currentUserQueryOptions())
 
-      navigate(authenticatedDestination(user, returnTo), { replace: true })
+      const destination = authenticatedDestination(user, returnTo)
+
+      if (isAuthorizationContinuation(destination)) {
+        window.location.assign(destination)
+        return
+      }
+
+      navigate(destination, { replace: true })
     } catch (error) {
       setRequestError(error)
     } finally {

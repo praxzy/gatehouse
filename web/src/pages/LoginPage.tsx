@@ -7,7 +7,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 import { login } from '@/api/auth'
 import { currentUserQueryKey, currentUserQueryOptions } from '@/auth/currentUser'
-import { authenticatedDestination } from '@/auth/routing'
+import { authenticatedDestination, isAuthorizationContinuation } from '@/auth/routing'
 import { RequestError } from '@/components/RequestError'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -60,9 +60,14 @@ export function LoginPage() {
 
       toast.success('Password accepted')
 
-      navigate(authenticatedDestination(user, searchParams.get('return_to')), {
-        replace: true,
-      })
+      const destination = authenticatedDestination(user, searchParams.get('return_to'))
+
+      if (isAuthorizationContinuation(destination)) {
+        window.location.assign(destination)
+        return
+      }
+
+      navigate(destination, { replace: true })
     } catch (error) {
       setRequestError(error)
     }

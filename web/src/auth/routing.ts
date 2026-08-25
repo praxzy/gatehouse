@@ -23,3 +23,7 @@ export function safeReturnTo(value?: string | null) {
 
   return value
 }
+
+export function isAuthorizationContinuation(value: string) {
+  return value === '/oauth/authorize/continue' || value.startsWith('/oauth/authorize/continue?')
+}

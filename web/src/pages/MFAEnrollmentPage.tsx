@@ -10,7 +10,7 @@ import { beginTOTPEnrollment, confirmTOTPEnrollment } from '@/api/auth'
 import type { TOTPEnrollment } from '@/api/auth'
 import { APIError } from '@/api/client'
 import { currentUserQueryKey, currentUserQueryOptions, useCurrentUser } from '@/auth/currentUser'
-import { authenticatedDestination, safeReturnTo } from '@/auth/routing'
+import { authenticatedDestination, isAuthorizationContinuation, safeReturnTo } from '@/auth/routing'
 import { RequestError } from '@/components/RequestError'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -162,7 +162,14 @@ export function MFAEnrollmentPage() {
 
       setRecoveryCodes(null)
 
-      navigate(authenticatedDestination(user, returnTo), { replace: true })
+      const destination = authenticatedDestination(user, returnTo)
+
+      if (isAuthorizationContinuation(destination)) {
+        window.location.assign(destination)
+        return
+      }
+
+      navigate(destination, { replace: true })
     } catch (error) {
       setRequestError(error)
     } finally {
