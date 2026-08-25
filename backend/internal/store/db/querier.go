@@ -16,6 +16,7 @@ type Querier interface {
 	AddApplicationRedirectURI(ctx context.Context, arg AddApplicationRedirectURIParams) (RedirectUri, error)
 	AddRolePermission(ctx context.Context, arg AddRolePermissionParams) error
 	AssignRoleToMembership(ctx context.Context, arg AssignRoleToMembershipParams) error
+	ConsumeDeniedAuthorizationTransaction(ctx context.Context, arg ConsumeDeniedAuthorizationTransactionParams) (int64, error)
 	ConsumeMFARecoveryCode(ctx context.Context, arg ConsumeMFARecoveryCodeParams) (int64, error)
 	ConsumeTOTPTimeStep(ctx context.Context, arg ConsumeTOTPTimeStepParams) (int64, error)
 	CountActiveOwners(ctx context.Context, tenantID pgtype.UUID) (int64, error)
@@ -35,6 +36,7 @@ type Querier interface {
 	CreateUserForInvitation(ctx context.Context, arg CreateUserForInvitationParams) (User, error)
 	DeleteMembershipRoles(ctx context.Context, arg DeleteMembershipRolesParams) error
 	DeleteRolePermissions(ctx context.Context, arg DeleteRolePermissionsParams) error
+	EvaluateAuthorizationSession(ctx context.Context, arg EvaluateAuthorizationSessionParams) (EvaluateAuthorizationSessionRow, error)
 	GetActiveApplicationForAuthorization(ctx context.Context, arg GetActiveApplicationForAuthorizationParams) (GetActiveApplicationForAuthorizationRow, error)
 	GetActiveMembershipForSessionCreation(ctx context.Context, arg GetActiveMembershipForSessionCreationParams) (GetActiveMembershipForSessionCreationRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)

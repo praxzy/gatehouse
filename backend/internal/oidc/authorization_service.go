@@ -52,6 +52,7 @@ type PendingAuthorization struct {
 	Nonce           string
 	CodeChallenge   string
 	ExpiresAt       time.Time
+	TenantSlug      string
 }
 
 type AuthorizationProtocolError struct {
@@ -165,6 +166,7 @@ func (service *AuthorizationService) BeginAuthorization(
 		Nonce:           transaction.Nonce,
 		CodeChallenge:   transaction.CodeChallenge,
 		ExpiresAt:       transaction.ExpiresAt.Time,
+		TenantSlug:      application.TenantSlug,
 	}, nil
 }
 
@@ -206,14 +208,15 @@ func (service *AuthorizationService) LoadAuthorization(
 			fmt.Errorf("load authorization transaction: %w", err)
 	}
 
-	if transaction.ApplicationStatus != "active" {
-		return PendingAuthorization{},
-			ErrAuthorizationClientUnavailable
-	}
 
 	if transaction.ConsumedAt.Valid {
 		return PendingAuthorization{},
 			ErrAuthorizationTransactionConsumed
+	}
+
+	if transaction.TenantStatus != "active" ||
+		transaction.ApplicationStatus != "active" {
+		return PendingAuthorization{}, ErrAuthorizationClientUnavailable
 	}
 
 	now := service.now().UTC()
@@ -235,6 +238,7 @@ func (service *AuthorizationService) LoadAuthorization(
 		Nonce:           transaction.Nonce,
 		CodeChallenge:   transaction.CodeChallenge,
 		ExpiresAt:       transaction.ExpiresAt.Time,
+		TenantSlug:      transaction.TenantSlug,
 	}, nil
 }
 

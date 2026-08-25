@@ -11,6 +11,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const consumeDeniedAuthorizationTransaction = `-- name: ConsumeDeniedAuthorizationTransaction :execrows
+UPDATE authorization_transactions
+SET consumed_at = now()
+WHERE id = $1
+  AND tenant_id = $2
+  AND application_id = $3
+  AND state_hash = $4
+  AND consumed_at IS NULL
+  AND expires_at > now()
+`
+
+type ConsumeDeniedAuthorizationTransactionParams struct {
+	TransactionID pgtype.UUID `json:"transaction_id"`
+	TenantID      pgtype.UUID `json:"tenant_id"`
+	ApplicationID pgtype.UUID `json:"application_id"`
+	StateHash     []byte      `json:"state_hash"`
+}
+
+func (q *Queries) ConsumeDeniedAuthorizationTransaction(ctx context.Context, arg ConsumeDeniedAuthorizationTransactionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeDeniedAuthorizationTransaction,
+		arg.TransactionID,
+		arg.TenantID,
+		arg.ApplicationID,
+		arg.StateHash,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createAuthorizationTransaction = `-- name: CreateAuthorizationTransaction :one
 INSERT INTO authorization_transactions (
     tenant_id,
@@ -95,18 +126,119 @@ func (q *Queries) CreateAuthorizationTransaction(ctx context.Context, arg Create
 	return i, err
 }
 
+const evaluateAuthorizationSession = `-- name: EvaluateAuthorizationSession :one
+SELECT
+    session.authentication_level,
+    (
+        tenant.mfa_required
+        OR EXISTS (
+            SELECT 1
+            FROM totp_credentials AS active_totp
+            WHERE active_totp.user_id = session.user_id
+              AND active_totp.status = 'active'
+        )
+    )::boolean AS mfa_required,
+    EXISTS (
+        SELECT 1
+        FROM totp_credentials AS active_totp
+        WHERE active_totp.user_id = session.user_id
+          AND active_totp.status = 'active'
+    )::boolean AS mfa_enrolled,
+    (
+        application.access_mode = 'all_active_members'
+        OR (
+            application.access_mode = 'allowed_roles'
+            AND EXISTS (
+                SELECT 1
+                FROM membership_roles AS membership_role
+                JOIN application_access AS access
+                  ON access.tenant_id =
+                     membership_role.tenant_id
+                 AND access.role_id =
+                     membership_role.role_id
+                 AND access.application_id =
+                     application.id
+                WHERE membership_role.tenant_id =
+                      membership.tenant_id
+                  AND membership_role.membership_id =
+                      membership.id
+            )
+        )
+    )::boolean AS access_granted
+FROM sessions AS session
+JOIN tenants AS tenant
+  ON tenant.id = session.tenant_id
+JOIN users
+  ON users.id = session.user_id
+JOIN memberships AS membership
+  ON membership.tenant_id = session.tenant_id
+ AND membership.id = session.membership_id
+ AND membership.user_id = session.user_id
+JOIN applications AS application
+  ON application.tenant_id = session.tenant_id
+ AND application.id = $1
+WHERE session.id = $2
+  AND session.tenant_id = $3
+  AND session.membership_id = $4
+  AND session.user_id = $5
+  AND session.revoked_at IS NULL
+  AND session.expires_at > now()
+  AND tenant.status = 'active'
+  AND users.status = 'active'
+  AND users.email_verified_at IS NOT NULL
+  AND membership.status = 'active'
+  AND application.status = 'active'
+`
+
+type EvaluateAuthorizationSessionParams struct {
+	ApplicationID pgtype.UUID `json:"application_id"`
+	SessionID     pgtype.UUID `json:"session_id"`
+	TenantID      pgtype.UUID `json:"tenant_id"`
+	MembershipID  pgtype.UUID `json:"membership_id"`
+	UserID        pgtype.UUID `json:"user_id"`
+}
+
+type EvaluateAuthorizationSessionRow struct {
+	AuthenticationLevel string `json:"authentication_level"`
+	MfaRequired         bool   `json:"mfa_required"`
+	MfaEnrolled         bool   `json:"mfa_enrolled"`
+	AccessGranted       bool   `json:"access_granted"`
+}
+
+func (q *Queries) EvaluateAuthorizationSession(ctx context.Context, arg EvaluateAuthorizationSessionParams) (EvaluateAuthorizationSessionRow, error) {
+	row := q.db.QueryRow(ctx, evaluateAuthorizationSession,
+		arg.ApplicationID,
+		arg.SessionID,
+		arg.TenantID,
+		arg.MembershipID,
+		arg.UserID,
+	)
+	var i EvaluateAuthorizationSessionRow
+	err := row.Scan(
+		&i.AuthenticationLevel,
+		&i.MfaRequired,
+		&i.MfaEnrolled,
+		&i.AccessGranted,
+	)
+	return i, err
+}
+
 const getActiveApplicationForAuthorization = `-- name: GetActiveApplicationForAuthorization :one
 SELECT
     application.id AS application_id,
     application.tenant_id,
+    tenant.slug AS tenant_slug,
     application.name,
     application.client_id,
     application.client_type,
     application.access_mode
 FROM applications AS application
+JOIN tenants AS tenant
+  ON tenant.id = application.tenant_id
 WHERE application.client_id =
       $1
   AND application.status = 'active'
+  AND tenant.status = 'active'
   AND EXISTS (
       SELECT 1
       FROM redirect_uris AS redirect_uri
@@ -127,6 +259,7 @@ type GetActiveApplicationForAuthorizationParams struct {
 type GetActiveApplicationForAuthorizationRow struct {
 	ApplicationID pgtype.UUID `json:"application_id"`
 	TenantID      pgtype.UUID `json:"tenant_id"`
+	TenantSlug    string      `json:"tenant_slug"`
 	Name          string      `json:"name"`
 	ClientID      string      `json:"client_id"`
 	ClientType    string      `json:"client_type"`
@@ -139,6 +272,7 @@ func (q *Queries) GetActiveApplicationForAuthorization(ctx context.Context, arg 
 	err := row.Scan(
 		&i.ApplicationID,
 		&i.TenantID,
+		&i.TenantSlug,
 		&i.Name,
 		&i.ClientID,
 		&i.ClientType,
@@ -162,6 +296,8 @@ SELECT
     transaction.created_at,
     transaction.expires_at,
     transaction.consumed_at,
+    tenant.slug AS tenant_slug,
+    tenant.status AS tenant_status,
     application.name AS application_name,
     application.status AS application_status,
     application.access_mode
@@ -173,6 +309,8 @@ JOIN applications AS application
      transaction.application_id
  AND application.client_id =
      transaction.client_id
+JOIN tenants AS tenant
+  ON tenant.id = transaction.tenant_id
 WHERE transaction.id =
       $1
   AND transaction.state_hash =
@@ -198,6 +336,8 @@ type GetAuthorizationTransactionByIDAndStateHashRow struct {
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
 	ConsumedAt          pgtype.Timestamptz `json:"consumed_at"`
+	TenantSlug          string             `json:"tenant_slug"`
+	TenantStatus        string             `json:"tenant_status"`
 	ApplicationName     string             `json:"application_name"`
 	ApplicationStatus   string             `json:"application_status"`
 	AccessMode          string             `json:"access_mode"`
@@ -220,6 +360,8 @@ func (q *Queries) GetAuthorizationTransactionByIDAndStateHash(ctx context.Contex
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ConsumedAt,
+		&i.TenantSlug,
+		&i.TenantStatus,
 		&i.ApplicationName,
 		&i.ApplicationStatus,
 		&i.AccessMode,

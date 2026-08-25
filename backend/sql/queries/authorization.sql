@@ -2,14 +2,18 @@
 SELECT
     application.id AS application_id,
     application.tenant_id,
+    tenant.slug AS tenant_slug,
     application.name,
     application.client_id,
     application.client_type,
     application.access_mode
 FROM applications AS application
+JOIN tenants AS tenant
+  ON tenant.id = application.tenant_id
 WHERE application.client_id =
       sqlc.arg(client_id)
   AND application.status = 'active'
+  AND tenant.status = 'active'
   AND EXISTS (
       SELECT 1
       FROM redirect_uris AS redirect_uri
@@ -78,6 +82,8 @@ SELECT
     transaction.created_at,
     transaction.expires_at,
     transaction.consumed_at,
+    tenant.slug AS tenant_slug,
+    tenant.status AS tenant_status,
     application.name AS application_name,
     application.status AS application_status,
     application.access_mode
@@ -89,7 +95,84 @@ JOIN applications AS application
      transaction.application_id
  AND application.client_id =
      transaction.client_id
+JOIN tenants AS tenant
+  ON tenant.id = transaction.tenant_id
 WHERE transaction.id =
       sqlc.arg(transaction_id)
   AND transaction.state_hash =
       sqlc.arg(state_hash);
+
+
+-- name: EvaluateAuthorizationSession :one
+SELECT
+    session.authentication_level,
+    (
+        tenant.mfa_required
+        OR EXISTS (
+            SELECT 1
+            FROM totp_credentials AS active_totp
+            WHERE active_totp.user_id = session.user_id
+              AND active_totp.status = 'active'
+        )
+    )::boolean AS mfa_required,
+    EXISTS (
+        SELECT 1
+        FROM totp_credentials AS active_totp
+        WHERE active_totp.user_id = session.user_id
+          AND active_totp.status = 'active'
+    )::boolean AS mfa_enrolled,
+    (
+        application.access_mode = 'all_active_members'
+        OR (
+            application.access_mode = 'allowed_roles'
+            AND EXISTS (
+                SELECT 1
+                FROM membership_roles AS membership_role
+                JOIN application_access AS access
+                  ON access.tenant_id =
+                     membership_role.tenant_id
+                 AND access.role_id =
+                     membership_role.role_id
+                 AND access.application_id =
+                     application.id
+                WHERE membership_role.tenant_id =
+                      membership.tenant_id
+                  AND membership_role.membership_id =
+                      membership.id
+            )
+        )
+    )::boolean AS access_granted
+FROM sessions AS session
+JOIN tenants AS tenant
+  ON tenant.id = session.tenant_id
+JOIN users
+  ON users.id = session.user_id
+JOIN memberships AS membership
+  ON membership.tenant_id = session.tenant_id
+ AND membership.id = session.membership_id
+ AND membership.user_id = session.user_id
+JOIN applications AS application
+  ON application.tenant_id = session.tenant_id
+ AND application.id = sqlc.arg(application_id)
+WHERE session.id = sqlc.arg(session_id)
+  AND session.tenant_id = sqlc.arg(tenant_id)
+  AND session.membership_id = sqlc.arg(membership_id)
+  AND session.user_id = sqlc.arg(user_id)
+  AND session.revoked_at IS NULL
+  AND session.expires_at > now()
+  AND tenant.status = 'active'
+  AND users.status = 'active'
+  AND users.email_verified_at IS NOT NULL
+  AND membership.status = 'active'
+  AND application.status = 'active';
+
+
+-- name: ConsumeDeniedAuthorizationTransaction :execrows
+UPDATE authorization_transactions
+SET consumed_at = now()
+WHERE id = sqlc.arg(transaction_id)
+  AND tenant_id = sqlc.arg(tenant_id)
+  AND application_id = sqlc.arg(application_id)
+  AND state_hash = sqlc.arg(state_hash)
+  AND consumed_at IS NULL
+  AND expires_at > now();
