@@ -40,6 +40,7 @@ type Querier interface {
 	GetActiveApplicationForAuthorization(ctx context.Context, arg GetActiveApplicationForAuthorizationParams) (GetActiveApplicationForAuthorizationRow, error)
 	GetActiveMembershipForSessionCreation(ctx context.Context, arg GetActiveMembershipForSessionCreationParams) (GetActiveMembershipForSessionCreationRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)
+	GetActiveTokenClient(ctx context.Context, clientID string) (GetActiveTokenClientRow, error)
 	GetApplicationByID(ctx context.Context, arg GetApplicationByIDParams) (GetApplicationByIDRow, error)
 	GetAuthorizationTransactionByIDAndStateHash(ctx context.Context, arg GetAuthorizationTransactionByIDAndStateHashParams) (GetAuthorizationTransactionByIDAndStateHashRow, error)
 	GetCustomRoleForUpdate(ctx context.Context, arg GetCustomRoleForUpdateParams) (Role, error)
@@ -57,6 +58,7 @@ type Querier interface {
 	GrantMemberRolePermissions(ctx context.Context, arg GrantMemberRolePermissionsParams) error
 	GrantOwnerRolePermissions(ctx context.Context, arg GrantOwnerRolePermissionsParams) error
 	IsOwnerMembership(ctx context.Context, arg IsOwnerMembershipParams) (bool, error)
+	IssueAuthorizationCode(ctx context.Context, arg IssueAuthorizationCodeParams) (AuthorizationCode, error)
 	ListApplicationAccessRoles(ctx context.Context, arg ListApplicationAccessRolesParams) ([]ListApplicationAccessRolesRow, error)
 	ListApplicationRedirectURIs(ctx context.Context, arg ListApplicationRedirectURIsParams) ([]RedirectUri, error)
 	ListApplications(ctx context.Context, tenantID pgtype.UUID) ([]ListApplicationsRow, error)
@@ -72,6 +74,7 @@ type Querier interface {
 	MarkMembershipInvitationAccepted(ctx context.Context, arg MarkMembershipInvitationAcceptedParams) (MembershipInvitation, error)
 	MarkUserEmailVerifiedFromInvitation(ctx context.Context, userID pgtype.UUID) (int64, error)
 	MembershipHasOwnerRole(ctx context.Context, arg MembershipHasOwnerRoleParams) (bool, error)
+	RedeemAuthorizationCode(ctx context.Context, arg RedeemAuthorizationCodeParams) (RedeemAuthorizationCodeRow, error)
 	RevokePasswordSessionForMFA(ctx context.Context, arg RevokePasswordSessionForMFAParams) (int64, error)
 	RevokeSessionByID(ctx context.Context, arg RevokeSessionByIDParams) (int64, error)
 	RevokeSessionByTokenHash(ctx context.Context, arg RevokeSessionByTokenHashParams) (int64, error)

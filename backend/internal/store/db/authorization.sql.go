@@ -368,3 +368,211 @@ func (q *Queries) GetAuthorizationTransactionByIDAndStateHash(ctx context.Contex
 	)
 	return i, err
 }
+
+const issueAuthorizationCode = `-- name: IssueAuthorizationCode :one
+WITH consumed_transaction AS (
+    UPDATE authorization_transactions AS transaction
+    SET consumed_at = now()
+    WHERE transaction.id =
+          $6
+      AND transaction.tenant_id =
+          $7
+      AND transaction.application_id =
+          $8
+      AND transaction.state_hash =
+          $9
+      AND transaction.consumed_at IS NULL
+      AND transaction.expires_at > now()
+      AND EXISTS (
+          SELECT 1
+          FROM sessions AS session
+          JOIN tenants AS tenant
+            ON tenant.id = session.tenant_id
+          JOIN users AS users
+            ON users.id = session.user_id
+          JOIN memberships AS membership
+            ON membership.tenant_id =
+               session.tenant_id
+           AND membership.id =
+               session.membership_id
+           AND membership.user_id =
+               session.user_id
+          JOIN applications AS application
+            ON application.tenant_id =
+               session.tenant_id
+           AND application.id =
+               transaction.application_id
+           AND application.client_id =
+               transaction.client_id
+          WHERE session.id =
+                $3
+            AND session.tenant_id =
+                transaction.tenant_id
+            AND session.membership_id =
+                $4
+            AND session.user_id =
+                $5
+            AND session.revoked_at IS NULL
+            AND session.expires_at > now()
+            AND tenant.status = 'active'
+            AND users.status = 'active'
+            AND users.email_verified_at IS NOT NULL
+            AND membership.status = 'active'
+            AND application.status = 'active'
+            AND (
+                session.authentication_level = 'mfa'
+                OR (
+                    tenant.mfa_required = false
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM totp_credentials AS active_totp
+                        WHERE active_totp.user_id =
+                              session.user_id
+                          AND active_totp.status = 'active'
+                    )
+                )
+            )
+            AND (
+                application.access_mode =
+                    'all_active_members'
+                OR (
+                    application.access_mode =
+                        'allowed_roles'
+                    AND EXISTS (
+                        SELECT 1
+                        FROM membership_roles AS membership_role
+                        JOIN application_access AS access
+                          ON access.tenant_id =
+                             membership_role.tenant_id
+                         AND access.role_id =
+                             membership_role.role_id
+                         AND access.application_id =
+                             application.id
+                        WHERE membership_role.tenant_id =
+                              membership.tenant_id
+                          AND membership_role.membership_id =
+                              membership.id
+                    )
+                )
+            )
+      )
+    RETURNING
+        transaction.id,
+        transaction.tenant_id,
+        transaction.application_id,
+        transaction.client_id,
+        transaction.redirect_uri,
+        transaction.nonce,
+        transaction.code_challenge,
+        transaction.code_challenge_method,
+        transaction.requested_scope
+)
+INSERT INTO authorization_codes (
+    code_hash,
+    authorization_transaction_id,
+    tenant_id,
+    application_id,
+    client_id,
+    session_id,
+    membership_id,
+    user_id,
+    redirect_uri,
+    nonce,
+    code_challenge,
+    code_challenge_method,
+    requested_scope,
+    authentication_time,
+    expires_at
+)
+SELECT
+    $1,
+    consumed_transaction.id,
+    consumed_transaction.tenant_id,
+    consumed_transaction.application_id,
+    consumed_transaction.client_id,
+    session.id,
+    session.membership_id,
+    session.user_id,
+    consumed_transaction.redirect_uri,
+    consumed_transaction.nonce,
+    consumed_transaction.code_challenge,
+    consumed_transaction.code_challenge_method,
+    consumed_transaction.requested_scope,
+    session.created_at,
+    $2
+FROM consumed_transaction
+JOIN sessions AS session
+  ON session.tenant_id =
+     consumed_transaction.tenant_id
+ AND session.id =
+     $3
+ AND session.membership_id =
+     $4
+ AND session.user_id =
+     $5
+RETURNING
+    code_hash,
+    authorization_transaction_id,
+    tenant_id,
+    application_id,
+    client_id,
+    session_id,
+    membership_id,
+    user_id,
+    redirect_uri,
+    nonce,
+    code_challenge,
+    code_challenge_method,
+    requested_scope,
+    authentication_time,
+    created_at,
+    expires_at,
+    consumed_at
+`
+
+type IssueAuthorizationCodeParams struct {
+	CodeHash      []byte             `json:"code_hash"`
+	CodeExpiresAt pgtype.Timestamptz `json:"code_expires_at"`
+	SessionID     pgtype.UUID        `json:"session_id"`
+	MembershipID  pgtype.UUID        `json:"membership_id"`
+	UserID        pgtype.UUID        `json:"user_id"`
+	TransactionID pgtype.UUID        `json:"transaction_id"`
+	TenantID      pgtype.UUID        `json:"tenant_id"`
+	ApplicationID pgtype.UUID        `json:"application_id"`
+	StateHash     []byte             `json:"state_hash"`
+}
+
+func (q *Queries) IssueAuthorizationCode(ctx context.Context, arg IssueAuthorizationCodeParams) (AuthorizationCode, error) {
+	row := q.db.QueryRow(ctx, issueAuthorizationCode,
+		arg.CodeHash,
+		arg.CodeExpiresAt,
+		arg.SessionID,
+		arg.MembershipID,
+		arg.UserID,
+		arg.TransactionID,
+		arg.TenantID,
+		arg.ApplicationID,
+		arg.StateHash,
+	)
+	var i AuthorizationCode
+	err := row.Scan(
+		&i.CodeHash,
+		&i.AuthorizationTransactionID,
+		&i.TenantID,
+		&i.ApplicationID,
+		&i.ClientID,
+		&i.SessionID,
+		&i.MembershipID,
+		&i.UserID,
+		&i.RedirectUri,
+		&i.Nonce,
+		&i.CodeChallenge,
+		&i.CodeChallengeMethod,
+		&i.RequestedScope,
+		&i.AuthenticationTime,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ConsumedAt,
+	)
+	return i, err
+}

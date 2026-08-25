@@ -176,3 +176,164 @@ WHERE id = sqlc.arg(transaction_id)
   AND state_hash = sqlc.arg(state_hash)
   AND consumed_at IS NULL
   AND expires_at > now();
+
+
+-- name: IssueAuthorizationCode :one
+WITH consumed_transaction AS (
+    UPDATE authorization_transactions AS transaction
+    SET consumed_at = now()
+    WHERE transaction.id =
+          sqlc.arg(transaction_id)
+      AND transaction.tenant_id =
+          sqlc.arg(tenant_id)
+      AND transaction.application_id =
+          sqlc.arg(application_id)
+      AND transaction.state_hash =
+          sqlc.arg(state_hash)
+      AND transaction.consumed_at IS NULL
+      AND transaction.expires_at > now()
+      AND EXISTS (
+          SELECT 1
+          FROM sessions AS session
+          JOIN tenants AS tenant
+            ON tenant.id = session.tenant_id
+          JOIN users AS users
+            ON users.id = session.user_id
+          JOIN memberships AS membership
+            ON membership.tenant_id =
+               session.tenant_id
+           AND membership.id =
+               session.membership_id
+           AND membership.user_id =
+               session.user_id
+          JOIN applications AS application
+            ON application.tenant_id =
+               session.tenant_id
+           AND application.id =
+               transaction.application_id
+           AND application.client_id =
+               transaction.client_id
+          WHERE session.id =
+                sqlc.arg(session_id)
+            AND session.tenant_id =
+                transaction.tenant_id
+            AND session.membership_id =
+                sqlc.arg(membership_id)
+            AND session.user_id =
+                sqlc.arg(user_id)
+            AND session.revoked_at IS NULL
+            AND session.expires_at > now()
+            AND tenant.status = 'active'
+            AND users.status = 'active'
+            AND users.email_verified_at IS NOT NULL
+            AND membership.status = 'active'
+            AND application.status = 'active'
+            AND (
+                session.authentication_level = 'mfa'
+                OR (
+                    tenant.mfa_required = false
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM totp_credentials AS active_totp
+                        WHERE active_totp.user_id =
+                              session.user_id
+                          AND active_totp.status = 'active'
+                    )
+                )
+            )
+            AND (
+                application.access_mode =
+                    'all_active_members'
+                OR (
+                    application.access_mode =
+                        'allowed_roles'
+                    AND EXISTS (
+                        SELECT 1
+                        FROM membership_roles AS membership_role
+                        JOIN application_access AS access
+                          ON access.tenant_id =
+                             membership_role.tenant_id
+                         AND access.role_id =
+                             membership_role.role_id
+                         AND access.application_id =
+                             application.id
+                        WHERE membership_role.tenant_id =
+                              membership.tenant_id
+                          AND membership_role.membership_id =
+                              membership.id
+                    )
+                )
+            )
+      )
+    RETURNING
+        transaction.id,
+        transaction.tenant_id,
+        transaction.application_id,
+        transaction.client_id,
+        transaction.redirect_uri,
+        transaction.nonce,
+        transaction.code_challenge,
+        transaction.code_challenge_method,
+        transaction.requested_scope
+)
+INSERT INTO authorization_codes (
+    code_hash,
+    authorization_transaction_id,
+    tenant_id,
+    application_id,
+    client_id,
+    session_id,
+    membership_id,
+    user_id,
+    redirect_uri,
+    nonce,
+    code_challenge,
+    code_challenge_method,
+    requested_scope,
+    authentication_time,
+    expires_at
+)
+SELECT
+    sqlc.arg(code_hash),
+    consumed_transaction.id,
+    consumed_transaction.tenant_id,
+    consumed_transaction.application_id,
+    consumed_transaction.client_id,
+    session.id,
+    session.membership_id,
+    session.user_id,
+    consumed_transaction.redirect_uri,
+    consumed_transaction.nonce,
+    consumed_transaction.code_challenge,
+    consumed_transaction.code_challenge_method,
+    consumed_transaction.requested_scope,
+    session.created_at,
+    sqlc.arg(code_expires_at)
+FROM consumed_transaction
+JOIN sessions AS session
+  ON session.tenant_id =
+     consumed_transaction.tenant_id
+ AND session.id =
+     sqlc.arg(session_id)
+ AND session.membership_id =
+     sqlc.arg(membership_id)
+ AND session.user_id =
+     sqlc.arg(user_id)
+RETURNING
+    code_hash,
+    authorization_transaction_id,
+    tenant_id,
+    application_id,
+    client_id,
+    session_id,
+    membership_id,
+    user_id,
+    redirect_uri,
+    nonce,
+    code_challenge,
+    code_challenge_method,
+    requested_scope,
+    authentication_time,
+    created_at,
+    expires_at,
+    consumed_at;

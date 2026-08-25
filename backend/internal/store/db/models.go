@@ -8,6 +8,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessToken struct {
+	TokenHash             []byte             `json:"token_hash"`
+	AuthorizationCodeHash []byte             `json:"authorization_code_hash"`
+	TenantID              pgtype.UUID        `json:"tenant_id"`
+	ApplicationID         pgtype.UUID        `json:"application_id"`
+	ClientID              string             `json:"client_id"`
+	SessionID             pgtype.UUID        `json:"session_id"`
+	MembershipID          pgtype.UUID        `json:"membership_id"`
+	UserID                pgtype.UUID        `json:"user_id"`
+	GrantedScope          []string           `json:"granted_scope"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt             pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt             pgtype.Timestamptz `json:"revoked_at"`
+	RevocationReason      *string            `json:"revocation_reason"`
+}
+
 type Application struct {
 	ID                    pgtype.UUID        `json:"id"`
 	TenantID              pgtype.UUID        `json:"tenant_id"`
@@ -28,6 +44,26 @@ type ApplicationAccess struct {
 	ApplicationID pgtype.UUID        `json:"application_id"`
 	RoleID        pgtype.UUID        `json:"role_id"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type AuthorizationCode struct {
+	CodeHash                   []byte             `json:"code_hash"`
+	AuthorizationTransactionID pgtype.UUID        `json:"authorization_transaction_id"`
+	TenantID                   pgtype.UUID        `json:"tenant_id"`
+	ApplicationID              pgtype.UUID        `json:"application_id"`
+	ClientID                   string             `json:"client_id"`
+	SessionID                  pgtype.UUID        `json:"session_id"`
+	MembershipID               pgtype.UUID        `json:"membership_id"`
+	UserID                     pgtype.UUID        `json:"user_id"`
+	RedirectUri                string             `json:"redirect_uri"`
+	Nonce                      string             `json:"nonce"`
+	CodeChallenge              string             `json:"code_challenge"`
+	CodeChallengeMethod        string             `json:"code_challenge_method"`
+	RequestedScope             []string           `json:"requested_scope"`
+	AuthenticationTime         pgtype.Timestamptz `json:"authentication_time"`
+	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt                  pgtype.Timestamptz `json:"expires_at"`
+	ConsumedAt                 pgtype.Timestamptz `json:"consumed_at"`
 }
 
 type AuthorizationTransaction struct {
