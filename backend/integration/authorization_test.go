@@ -233,30 +233,69 @@ func TestSecureAuthorizationRequestLifecycle(
 				nil,
 			)
 
-			body := requireResponseStatus(
+			requireResponseStatus(
 				t,
 				response,
-				http.StatusOK,
+				http.StatusFound,
 			)
 
-			var result struct {
-				TransactionID string `json:"transaction_id"`
-				Application   struct {
-					Name     string `json:"name"`
-					ClientID string `json:"client_id"`
-				} `json:"application"`
-				RequestedScope []string `json:"requested_scope"`
+			loginLocation := response.Header.Get("Location")
+			if loginLocation == "" {
+				t.Fatal("expected login redirect")
 			}
 
-			if err := json.Unmarshal(body, &result); err != nil {
+			loginTarget, err := url.Parse(loginLocation)
+			if err != nil {
+				t.Fatalf("parse login redirect: %v", err)
+			}
+
+			if loginTarget.Path != "/login" {
 				t.Fatalf(
-					"decode authorization response: %v",
+					"expected login redirect, got %q",
+					loginLocation,
+				)
+			}
+
+			if loginTarget.Query().Get("tenant_slug") !=
+				"authorization-company" {
+				t.Fatalf(
+					"unexpected login tenant %q",
+					loginTarget.Query().Get("tenant_slug"),
+				)
+			}
+
+			returnTo := loginTarget.Query().Get("return_to")
+			if returnTo == "" {
+				t.Fatal("login redirect did not preserve continuation")
+			}
+
+			continuation, err := url.Parse(returnTo)
+			if err != nil {
+				t.Fatalf(
+					"parse authorization continuation: %v",
 					err,
 				)
 			}
 
+			if continuation.Path !=
+				"/oauth/authorize/continue" {
+				t.Fatalf(
+					"unexpected continuation path %q",
+					continuation.Path,
+				)
+			}
+
+			if continuation.Query().Get("state") !=
+				testAuthorizationState {
+				t.Fatal(
+					"authorization state was not preserved",
+				)
+			}
+
 			parsedID, err := uuid.Parse(
-				result.TransactionID,
+				continuation.Query().Get(
+					"transaction_id",
+				),
 			)
 			if err != nil {
 				t.Fatalf(
@@ -268,22 +307,6 @@ func TestSecureAuthorizationRequestLifecycle(
 			transactionID = pgtype.UUID{
 				Bytes: [16]byte(parsedID),
 				Valid: true,
-			}
-
-			if result.Application.Name !=
-				"Authorization Portal" {
-				t.Fatalf(
-					"unexpected application name %q",
-					result.Application.Name,
-				)
-			}
-
-			if result.Application.ClientID !=
-				testAuthorizationClientID {
-				t.Fatalf(
-					"unexpected client ID %q",
-					result.Application.ClientID,
-				)
 			}
 
 			expectedStateHash := sha256.Sum256(
@@ -300,14 +323,14 @@ func TestSecureAuthorizationRequestLifecycle(
 			if err := pool.QueryRow(
 				ctx,
 				`
-					SELECT
-						state_hash,
-						nonce,
-						code_challenge,
-						expires_at - created_at
-					FROM authorization_transactions
-					WHERE id = $1
-				`,
+				SELECT
+					state_hash,
+					nonce,
+					code_challenge,
+					expires_at - created_at
+				FROM authorization_transactions
+				WHERE id = $1
+			`,
 				transactionID,
 			).Scan(
 				&storedStateHash,
@@ -331,7 +354,9 @@ func TestSecureAuthorizationRequestLifecycle(
 			}
 
 			if storedNonce != testAuthorizationNonce {
-				t.Fatal("authorization nonce was not preserved")
+				t.Fatal(
+					"authorization nonce was not preserved",
+				)
 			}
 
 			if storedChallenge != testAuthorizationPKCE {
@@ -553,4 +578,680 @@ func assertAuthorizationTransactionCount(
 			actual,
 		)
 	}
+}
+
+func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
+	t *testing.T,
+) {
+	ctx := context.Background()
+
+	authentication, pool :=
+		newAuthenticationTestService(t, ctx)
+
+	registration, err := authentication.Register(
+		ctx,
+		auth.RegisterInput{
+			TenantName:  "Policy Company",
+			TenantSlug:  "policy-company",
+			Email:       "owner@policy.test",
+			DisplayName: "Policy Owner",
+			Password:    "correct horse battery staple",
+		},
+	)
+	if err != nil {
+		t.Fatalf("register policy tenant: %v", err)
+	}
+
+	markTestEmailVerified(
+		t,
+		ctx,
+		pool,
+		registration.UserID,
+	)
+
+	var applicationID pgtype.UUID
+	if err := pool.QueryRow(
+		ctx,
+		`
+			INSERT INTO applications (
+				tenant_id,
+				name,
+				client_id,
+				client_type,
+				status,
+				access_mode
+			)
+			VALUES (
+				$1,
+				'Restricted Portal',
+				$2,
+				'public',
+				'active',
+				'allowed_roles'
+			)
+			RETURNING id
+		`,
+		registration.TenantID,
+		testAuthorizationClientID,
+	).Scan(&applicationID); err != nil {
+		t.Fatalf(
+			"create restricted application: %v",
+			err,
+		)
+	}
+
+	if _, err := pool.Exec(
+		ctx,
+		`
+			INSERT INTO redirect_uris (
+				tenant_id,
+				application_id,
+				uri
+			)
+			VALUES ($1, $2, $3)
+		`,
+		registration.TenantID,
+		applicationID,
+		testAuthorizationRedirect,
+	); err != nil {
+		t.Fatalf(
+			"create restricted redirect URI: %v",
+			err,
+		)
+	}
+
+	if _, err := pool.Exec(
+		ctx,
+		`
+			INSERT INTO application_access (
+				tenant_id,
+				application_id,
+				role_id
+			)
+			VALUES ($1, $2, $3)
+		`,
+		registration.TenantID,
+		applicationID,
+		registration.OwnerRoleID,
+	); err != nil {
+		t.Fatalf(
+			"grant owner application access: %v",
+			err,
+		)
+	}
+
+	createAuthorizationPolicyMember(
+		t,
+		ctx,
+		pool,
+		registration.TenantID,
+	)
+
+	authorization, err :=
+		oidc.NewAuthorizationService(pool)
+	if err != nil {
+		t.Fatalf(
+			"create authorization service: %v",
+			err,
+		)
+	}
+
+	router := httpapi.NewRouter(
+		httpapi.Dependencies{
+			Authentication:    authentication,
+			OIDCAuthorization: authorization,
+			SessionCookie:     httpapi.NewSessionCookie(true),
+		},
+	)
+
+	ownerPasswordCookie := loginLifecycleUser(
+		t,
+		router,
+		"policy-company",
+		"owner@policy.test",
+		"correct horse battery staple",
+	)
+
+	enrollmentResponse := performRequest(
+		t,
+		router,
+		http.MethodPost,
+		"/api/v1/auth/mfa/enroll",
+		nil,
+		ownerPasswordCookie,
+	)
+
+	enrollmentBody := requireResponseStatus(
+		t,
+		enrollmentResponse,
+		http.StatusOK,
+	)
+
+	var enrollment mfaEnrollmentResponse
+	if err := json.Unmarshal(
+		enrollmentBody,
+		&enrollment,
+	); err != nil {
+		t.Fatalf(
+			"decode policy MFA enrollment: %v",
+			err,
+		)
+	}
+
+	secret := decodeEnrollmentSecret(t, enrollment)
+	confirmationTime := time.Now()
+
+	confirmationCode, err := auth.GenerateTOTPCode(
+		secret,
+		confirmationTime,
+	)
+	if err != nil {
+		t.Fatalf(
+			"generate enrollment code: %v",
+			err,
+		)
+	}
+
+	confirmationResponse := performMFAJSONRequest(
+		t,
+		router,
+		"/api/v1/auth/mfa/enroll/confirm",
+		map[string]string{
+			"code": confirmationCode,
+		},
+		ownerPasswordCookie,
+	)
+
+	requireResponseStatus(
+		t,
+		confirmationResponse,
+		http.StatusOK,
+	)
+
+	ownerMFACookie := requireSessionCookie(
+		t,
+		confirmationResponse,
+	)
+
+	t.Run(
+		"valid fully authenticated SSO session is reused",
+		func(t *testing.T) {
+			response := performRequest(
+				t,
+				router,
+				http.MethodGet,
+				authorizationRequestTarget(
+					map[string]string{
+						"state": "owner-sso-state-0123456789",
+						"nonce": "owner-sso-nonce-0123456789",
+					},
+				),
+				nil,
+				ownerMFACookie,
+			)
+
+			requireAuthorizationGrant(
+				t,
+				response,
+			)
+		},
+	)
+
+	var challengeContinuation string
+
+	t.Run(
+		"password session cannot bypass required MFA",
+		func(t *testing.T) {
+			passwordCookie := loginLifecycleUser(
+				t,
+				router,
+				"policy-company",
+				"owner@policy.test",
+				"correct horse battery staple",
+			)
+
+			response := performRequest(
+				t,
+				router,
+				http.MethodGet,
+				authorizationRequestTarget(
+					map[string]string{
+						"state": "owner-mfa-state-0123456789",
+						"nonce": "owner-mfa-nonce-0123456789",
+					},
+				),
+				nil,
+				passwordCookie,
+			)
+
+			challengeContinuation =
+				requireAuthorizationFlowRedirect(
+					t,
+					response,
+					"/mfa/challenge",
+				)
+
+			bypassResponse := performRequest(
+				t,
+				router,
+				http.MethodGet,
+				challengeContinuation,
+				nil,
+				passwordCookie,
+			)
+
+			requireAuthorizationFlowRedirect(
+				t,
+				bypassResponse,
+				"/mfa/challenge",
+			)
+
+			nextCode, err := auth.GenerateTOTPCode(
+				secret,
+				confirmationTime.Add(30*time.Second),
+			)
+			if err != nil {
+				t.Fatalf(
+					"generate challenge code: %v",
+					err,
+				)
+			}
+
+			challengeResponse := performMFAJSONRequest(
+				t,
+				router,
+				"/api/v1/auth/mfa/challenge/totp",
+				map[string]string{
+					"code": nextCode,
+				},
+				passwordCookie,
+			)
+
+			requireResponseStatus(
+				t,
+				challengeResponse,
+				http.StatusOK,
+			)
+
+			challengedCookie := requireSessionCookie(
+				t,
+				challengeResponse,
+			)
+
+			grantedResponse := performRequest(
+				t,
+				router,
+				http.MethodGet,
+				challengeContinuation,
+				nil,
+				challengedCookie,
+			)
+
+			requireAuthorizationGrant(
+				t,
+				grantedResponse,
+			)
+		},
+	)
+
+	t.Run(
+		"member excluded by application policy is denied",
+		func(t *testing.T) {
+			memberCookie := loginLifecycleUser(
+				t,
+				router,
+				"policy-company",
+				"viewer@policy.test",
+				"correct horse battery staple",
+			)
+
+			const deniedState = "viewer-denied-state-0123456789"
+
+			response := performRequest(
+				t,
+				router,
+				http.MethodGet,
+				authorizationRequestTarget(
+					map[string]string{
+						"state": deniedState,
+						"nonce": "viewer-denied-nonce-0123456789",
+					},
+				),
+				nil,
+				memberCookie,
+			)
+
+			requireResponseStatus(
+				t,
+				response,
+				http.StatusFound,
+			)
+
+			assertAuthorizationErrorRedirect(
+				t,
+				response,
+				"access_denied",
+				deniedState,
+			)
+
+			stateHash := sha256.Sum256(
+				[]byte(deniedState),
+			)
+
+			var (
+				deniedTransactionID pgtype.UUID
+				consumedAt          pgtype.Timestamptz
+			)
+
+			if err := pool.QueryRow(
+				ctx,
+				`
+					SELECT
+						id,
+						consumed_at
+					FROM authorization_transactions
+					WHERE state_hash = $1
+				`,
+				stateHash[:],
+			).Scan(
+				&deniedTransactionID,
+				&consumedAt,
+			); err != nil {
+				t.Fatalf(
+					"load denied transaction: %v",
+					err,
+				)
+			}
+
+			if !consumedAt.Valid {
+				t.Fatal(
+					"denied transaction was not consumed",
+				)
+			}
+
+			replayTarget :=
+				authorizationContinuationTargetForTest(
+					deniedTransactionID,
+					deniedState,
+				)
+
+			replayResponse := performRequest(
+				t,
+				router,
+				http.MethodGet,
+				replayTarget,
+				nil,
+				memberCookie,
+			)
+
+			requireResponseStatus(
+				t,
+				replayResponse,
+				http.StatusBadRequest,
+			)
+
+			if location :=
+				replayResponse.Header.Get("Location"); location != "" {
+				t.Fatalf(
+					"consumed denial redirected to %q",
+					location,
+				)
+			}
+		},
+	)
+}
+
+func createAuthorizationPolicyMember(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	tenantID pgtype.UUID,
+) {
+	t.Helper()
+
+	passwordHash, err := auth.HashPassword(
+		"correct horse battery staple",
+	)
+	if err != nil {
+		t.Fatalf(
+			"hash policy member password: %v",
+			err,
+		)
+	}
+
+	transaction, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf(
+			"begin policy member transaction: %v",
+			err,
+		)
+	}
+	defer func() {
+		_ = transaction.Rollback(context.Background())
+	}()
+
+	var userID pgtype.UUID
+	if err := transaction.QueryRow(
+		ctx,
+		`
+			INSERT INTO users (
+				email,
+				display_name,
+				status,
+				email_verified_at
+			)
+			VALUES (
+				'viewer@policy.test',
+				'Policy Viewer',
+				'active',
+				now()
+			)
+			RETURNING id
+		`,
+	).Scan(&userID); err != nil {
+		t.Fatalf(
+			"create policy member user: %v",
+			err,
+		)
+	}
+
+	if _, err := transaction.Exec(
+		ctx,
+		`
+			INSERT INTO password_credentials (
+				user_id,
+				password_hash
+			)
+			VALUES ($1, $2)
+		`,
+		userID,
+		passwordHash,
+	); err != nil {
+		t.Fatalf(
+			"create policy member password: %v",
+			err,
+		)
+	}
+
+	var membershipID pgtype.UUID
+	if err := transaction.QueryRow(
+		ctx,
+		`
+			INSERT INTO memberships (
+				tenant_id,
+				user_id,
+				status
+			)
+			VALUES ($1, $2, 'active')
+			RETURNING id
+		`,
+		tenantID,
+		userID,
+	).Scan(&membershipID); err != nil {
+		t.Fatalf(
+			"create policy membership: %v",
+			err,
+		)
+	}
+
+	var memberRoleID pgtype.UUID
+	if err := transaction.QueryRow(
+		ctx,
+		`
+			SELECT id
+			FROM roles
+			WHERE tenant_id = $1
+			  AND role_key = 'member'
+		`,
+		tenantID,
+	).Scan(&memberRoleID); err != nil {
+		t.Fatalf(
+			"load policy member role: %v",
+			err,
+		)
+	}
+
+	if _, err := transaction.Exec(
+		ctx,
+		`
+			INSERT INTO membership_roles (
+				tenant_id,
+				membership_id,
+				role_id
+			)
+			VALUES ($1, $2, $3)
+		`,
+		tenantID,
+		membershipID,
+		memberRoleID,
+	); err != nil {
+		t.Fatalf(
+			"assign policy member role: %v",
+			err,
+		)
+	}
+
+	if err := transaction.Commit(ctx); err != nil {
+		t.Fatalf(
+			"commit policy member: %v",
+			err,
+		)
+	}
+}
+
+func requireAuthorizationFlowRedirect(
+	t *testing.T,
+	response *http.Response,
+	expectedPath string,
+) string {
+	t.Helper()
+
+	requireResponseStatus(
+		t,
+		response,
+		http.StatusFound,
+	)
+
+	location := response.Header.Get("Location")
+	if location == "" {
+		t.Fatal("expected authorization flow redirect")
+	}
+
+	destination, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf(
+			"parse authorization flow redirect: %v",
+			err,
+		)
+	}
+
+	if destination.Path != expectedPath {
+		t.Fatalf(
+			"expected redirect to %q, got %q",
+			expectedPath,
+			destination.Path,
+		)
+	}
+
+	returnTo := destination.Query().Get("return_to")
+	if returnTo == "" {
+		t.Fatal(
+			"authorization flow redirect lost continuation",
+		)
+	}
+
+	return returnTo
+}
+
+func requireAuthorizationGrant(
+	t *testing.T,
+	response *http.Response,
+) {
+	t.Helper()
+
+	body := requireResponseStatus(
+		t,
+		response,
+		http.StatusOK,
+	)
+
+	if location := response.Header.Get("Location"); location != "" {
+		t.Fatalf(
+			"granted authorization unexpectedly redirected to %q",
+			location,
+		)
+	}
+
+	var result struct {
+		Status        string `json:"status"`
+		TransactionID string `json:"transaction_id"`
+		Application   struct {
+			ClientID string `json:"client_id"`
+		} `json:"application"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf(
+			"decode authorization grant: %v",
+			err,
+		)
+	}
+
+	if result.Status != "granted" {
+		t.Fatalf(
+			"expected granted status, got %q",
+			result.Status,
+		)
+	}
+
+	if result.TransactionID == "" {
+		t.Fatal(
+			"authorization grant omitted transaction ID",
+		)
+	}
+
+	if result.Application.ClientID !=
+		testAuthorizationClientID {
+		t.Fatalf(
+			"unexpected granted client ID %q",
+			result.Application.ClientID,
+		)
+	}
+}
+
+func authorizationContinuationTargetForTest(
+	transactionID pgtype.UUID,
+	state string,
+) string {
+	transactionUUID := uuid.UUID(
+		transactionID.Bytes,
+	).String()
+
+	query := url.Values{
+		"transaction_id": {transactionUUID},
+		"state":          {state},
+	}
+
+	return "/oauth/authorize/continue?" +
+		query.Encode()
 }

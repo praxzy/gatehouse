@@ -28,8 +28,10 @@ func NewRouter(dependencies Dependencies) http.Handler {
 	router.Get("/healthz", healthz)
 
 	oidcHandler := oidcHandler{
-		metadata:      dependencies.OIDCMetadata,
-		authorization: dependencies.OIDCAuthorization,
+		metadata:       dependencies.OIDCMetadata,
+		authorization:  dependencies.OIDCAuthorization,
+		authentication: dependencies.Authentication,
+		sessionCookie:  dependencies.SessionCookie,
 	}
 
 	if dependencies.OIDCMetadata != nil {
@@ -48,6 +50,11 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		router.Get(
 			"/oauth/authorize",
 			oidcHandler.authorize,
+		)
+
+		router.Get(
+			"/oauth/authorize/continue",
+			oidcHandler.continueAuthorization,
 		)
 	}
 

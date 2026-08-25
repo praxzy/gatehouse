@@ -6,6 +6,7 @@ import (
 )
 
 const sessionCookieName = "gatehouse_session"
+const sessionCookiePath = "/"
 
 type SessionCookie struct {
 	secure bool
@@ -35,7 +36,7 @@ func (cookie SessionCookie) Set(writer http.ResponseWriter, token string, expire
 	http.SetCookie(writer, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
-		Path:     "/api/",
+		Path:     sessionCookiePath,
 		Expires:  expiresAt.UTC(),
 		MaxAge:   maxAge,
 		Secure:   cookie.secure,
@@ -48,7 +49,7 @@ func (cookie SessionCookie) Clear(writer http.ResponseWriter) {
 	http.SetCookie(writer, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
-		Path:     "/api/",
+		Path:     sessionCookiePath,
 		Expires:  time.Unix(1, 0).UTC(),
 		MaxAge:   -1,
 		Secure:   cookie.secure,

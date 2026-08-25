@@ -241,8 +241,8 @@ func assertSecureSessionCookie(
 		)
 	}
 
-	if cookie.Path != "/api/" {
-		t.Fatalf("expected cookie path /api/, got %q", cookie.Path)
+	if cookie.Path != "/" {
+		t.Fatalf("expected cookie path /, got %q", cookie.Path)
 	}
 
 	if cookie.Domain != "" {
