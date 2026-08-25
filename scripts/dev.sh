@@ -43,21 +43,24 @@ echo "Applying database migrations..."
 
 api_pid=""
 web_pid=""
+portal_pid=""
 
 cleanup() {
     exit_code=$?
 
     trap - EXIT INT TERM
 
-    if [[ -n "$api_pid" ]]; then
-        kill "$api_pid" 2>/dev/null || true
-    fi
+    for process_id in "$api_pid" "$web_pid" "$portal_pid"; do
+        if [[ -n "$process_id" ]]; then
+            kill "$process_id" 2>/dev/null || true
+        fi
+    done
 
-    if [[ -n "$web_pid" ]]; then
-        kill "$web_pid" 2>/dev/null || true
-    fi
-
-    wait "$api_pid" "$web_pid" 2>/dev/null || true
+    for process_id in "$api_pid" "$web_pid" "$portal_pid"; do
+        if [[ -n "$process_id" ]]; then
+            wait "$process_id" 2>/dev/null || true
+        fi
+    done
 
     exit "$exit_code"
 }
@@ -78,11 +81,29 @@ echo "Starting Gatehouse web app..."
 ) &
 web_pid=$!
 
+process_ids=("$api_pid" "$web_pid")
+
+if [[ -n "${EMPLOYEE_PORTAL_OIDC_CLIENT_ID:-}" &&
+      -n "${EMPLOYEE_PORTAL_OIDC_CLIENT_SECRET:-}" ]]; then
+    echo "Starting Employee Portal OIDC client..."
+    (
+        cd examples/employee-portal
+        exec go run ./cmd/server
+    ) &
+    portal_pid=$!
+    process_ids+=("$portal_pid")
+fi
+
 echo
 echo "Gatehouse development environment is running."
 echo "API: http://localhost:8080"
 echo "Web: http://localhost:5173"
+if [[ -n "$portal_pid" ]]; then
+    echo "Employee Portal: http://localhost:8090"
+else
+    echo "Employee Portal: disabled until its client credentials are set in .env"
+fi
 echo "Press Ctrl+C to stop the API and web app."
 echo
 
-wait -n "$api_pid" "$web_pid"
+wait -n "${process_ids[@]}"

@@ -1,4 +1,4 @@
-.PHONY: dev api web db-up test-db-up migrate test check generate stop
+.PHONY: dev api web portal db-up test-db-up migrate test check generate stop
 
 dev:
 	@./scripts/dev.sh
@@ -18,9 +18,13 @@ api: migrate
 web:
 	@cd web && pnpm dev
 
+portal:
+	@bash -c 'set -a; source .env; set +a; cd examples/employee-portal; go run ./cmd/server'
+
 test: test-db-up
 	@bash -c 'set -a; source .env; set +a; cd backend; go test ./...'
 	@cd web && pnpm test
+	@cd examples/employee-portal && go test ./...
 
 check: test-db-up
 	@bash -c 'set -a; source .env; set +a; cd backend; go test ./...'
@@ -30,6 +34,8 @@ check: test-db-up
 	@cd web && pnpm typecheck
 	@cd web && pnpm test
 	@cd web && pnpm build
+	@cd examples/employee-portal && go test ./...
+	@cd examples/employee-portal && go vet ./...
 
 generate:
 	@cd backend && go tool sqlc generate
