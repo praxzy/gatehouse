@@ -122,6 +122,17 @@ func run() error {
 		)
 	}
 
+	oidcTokens, err := oidc.NewTokenService(
+		pool,
+		oidcProvider,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"create OIDC token service: %w",
+			err,
+		)
+	}
+
 	cookieSecure, err := sessionCookieSecure()
 	if err != nil {
 		return err
@@ -138,6 +149,7 @@ func run() error {
 					cookieSecure,
 				),
 				OIDCAuthorization: oidcAuthorization,
+				OIDCTokens:        oidcTokens,
 			},
 		),
 		ReadHeaderTimeout: 5 * time.Second,

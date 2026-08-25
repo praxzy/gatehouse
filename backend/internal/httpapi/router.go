@@ -15,6 +15,7 @@ type Dependencies struct {
 	OIDCMetadata      OIDCMetadataService
 	SessionCookie     SessionCookie
 	OIDCAuthorization OIDCAuthorizationService
+	OIDCTokens        OIDCTokenService
 }
 
 type healthResponse struct {
@@ -32,6 +33,16 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		authorization:  dependencies.OIDCAuthorization,
 		authentication: dependencies.Authentication,
 		sessionCookie:  dependencies.SessionCookie,
+	}
+	tokenHandler := oidcTokenHandler{
+		tokens: dependencies.OIDCTokens,
+	}
+
+	if dependencies.OIDCTokens != nil {
+		router.Post(
+			"/oauth/token",
+			tokenHandler.exchange,
+		)
 	}
 
 	if dependencies.OIDCMetadata != nil {
