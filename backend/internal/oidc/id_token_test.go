@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"math/big"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -44,6 +45,10 @@ func TestSignedIDTokenVerifiesWithPublishedJWK(
 		ExpiresAt:          now.Add(5 * time.Minute).Unix(),
 		AuthenticationTime: now.Add(-time.Minute).Unix(),
 		Nonce:              "browser-nonce-123",
+		Name:               "Alice Example",
+		Email:              "alice@example.com",
+		EmailVerified:      true,
+		Roles:              []string{"Admin", "Member"},
 	}
 
 	token, err := signingKey.SignIDToken(
@@ -98,7 +103,7 @@ func TestSignedIDTokenVerifiesWithPublishedJWK(
 		t.Fatalf("decode ID token claims: %v", err)
 	}
 
-	if actualClaims != expectedClaims {
+	if !reflect.DeepEqual(actualClaims, expectedClaims) {
 		t.Fatalf(
 			"unexpected claims: %+v",
 			actualClaims,

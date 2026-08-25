@@ -21,13 +21,17 @@ var (
 )
 
 type IDTokenClaims struct {
-	Issuer             string `json:"iss"`
-	Subject            string `json:"sub"`
-	Audience           string `json:"aud"`
-	ExpiresAt          int64  `json:"exp"`
-	IssuedAt           int64  `json:"iat"`
-	AuthenticationTime int64  `json:"auth_time,omitempty"`
-	Nonce              string `json:"nonce,omitempty"`
+	Issuer             string   `json:"iss"`
+	Subject            string   `json:"sub"`
+	Audience           string   `json:"aud"`
+	ExpiresAt          int64    `json:"exp"`
+	IssuedAt           int64    `json:"iat"`
+	AuthenticationTime int64    `json:"auth_time,omitempty"`
+	Nonce              string   `json:"nonce,omitempty"`
+	Name               string   `json:"name"`
+	Email              string   `json:"email"`
+	EmailVerified      bool     `json:"email_verified"`
+	Roles              []string `json:"roles"`
 }
 
 type idTokenHeader struct {
@@ -103,9 +107,33 @@ func validateIDTokenClaims(
 			strings.TrimSpace(claims.Audience) ||
 		claims.IssuedAt <= 0 ||
 		claims.ExpiresAt <= claims.IssuedAt ||
-		claims.AuthenticationTime < 0 {
+		claims.AuthenticationTime < 0 ||
+		claims.Name == "" ||
+		claims.Name != strings.TrimSpace(claims.Name) ||
+		claims.Email == "" ||
+		claims.Email != strings.TrimSpace(claims.Email) ||
+		!claims.EmailVerified ||
+		len(claims.Roles) == 0 ||
+		!validRoleClaims(claims.Roles) {
 		return ErrInvalidIDTokenClaims
 	}
 
 	return nil
+}
+
+func validRoleClaims(roles []string) bool {
+	seen := make(map[string]struct{}, len(roles))
+	for _, role := range roles {
+		if role == "" ||
+			role != strings.TrimSpace(role) {
+			return false
+		}
+
+		if _, exists := seen[role]; exists {
+			return false
+		}
+		seen[role] = struct{}{}
+	}
+
+	return true
 }

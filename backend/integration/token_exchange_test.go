@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -925,7 +926,11 @@ func verifyTokenTestIDToken(
 		"https://identity.example.test" ||
 		claims.Subject != expectedSubject ||
 		claims.Audience != testAuthorizationClientID ||
-		claims.Nonce != expectedNonce {
+		claims.Nonce != expectedNonce ||
+		claims.Name != "Token Owner" ||
+		claims.Email != "owner@token.test" ||
+		!claims.EmailVerified ||
+		!slices.Contains(claims.Roles, "Owner") {
 		t.Fatalf(
 			"unexpected ID token claims: %+v",
 			claims,

@@ -188,6 +188,13 @@ func (service *TokenService) ExchangeAuthorizationCode(
 			ExpiresAt:          issuedAt.Add(idTokenLifetime).Unix(),
 			AuthenticationTime: authenticationTime.Unix(),
 			Nonce:              redeemed.Nonce,
+			Name:               redeemed.DisplayName,
+			Email:              redeemed.Email,
+			EmailVerified:      true,
+			Roles: append(
+				[]string(nil),
+				redeemed.Roles...,
+			),
 		},
 	)
 	if err != nil {

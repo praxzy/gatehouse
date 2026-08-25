@@ -100,6 +100,10 @@ func (provider *Provider) DiscoveryDocument() DiscoveryDocument {
 			"iat",
 			"auth_time",
 			"nonce",
+			"name",
+			"email",
+			"email_verified",
+			"roles",
 		},
 	}
 }

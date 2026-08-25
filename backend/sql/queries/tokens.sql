@@ -148,6 +148,32 @@ SELECT
     consumed_code.nonce,
     consumed_code.requested_scope AS granted_scope,
     consumed_code.authentication_time,
+    (
+        SELECT user_account.display_name
+        FROM users AS user_account
+        WHERE user_account.id =
+              consumed_code.user_id
+    ) AS display_name,
+    (
+        SELECT user_account.email
+        FROM users AS user_account
+        WHERE user_account.id =
+              consumed_code.user_id
+    ) AS email,
+    ARRAY(
+        SELECT role.name
+        FROM membership_roles AS membership_role
+        JOIN roles AS role
+          ON role.tenant_id =
+             membership_role.tenant_id
+         AND role.id =
+             membership_role.role_id
+        WHERE membership_role.tenant_id =
+              consumed_code.tenant_id
+          AND membership_role.membership_id =
+              consumed_code.membership_id
+        ORDER BY lower(role.name), role.id
+    )::text[] AS roles,
     issued_access_token.created_at
         AS access_token_created_at,
     issued_access_token.expires_at

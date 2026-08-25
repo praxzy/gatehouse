@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -79,6 +80,24 @@ func TestProviderPublishesDiscoveryAndJWKS(
 			discovery.
 				IDTokenSigningAlgorithmsSupported,
 		)
+	}
+
+	for _, claim := range []string{
+		"name",
+		"email",
+		"email_verified",
+		"roles",
+	} {
+		if !slices.Contains(
+			discovery.ClaimsSupported,
+			claim,
+		) {
+			t.Fatalf(
+				"discovery omitted claim %q: %v",
+				claim,
+				discovery.ClaimsSupported,
+			)
+		}
 	}
 
 	if len(
