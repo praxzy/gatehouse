@@ -1,8 +1,8 @@
 import { screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useLocation } from 'react-router-dom'
 import type { CurrentUser } from '@/api/auth'
-import { RequireFullyAuthenticated, RequirePermission } from './routeGuards'
+import { RequireFullyAuthenticated, RequirePermission, PublicOnlyRoute } from './routeGuards'
 import { renderWithProviders } from '@/test/render'
 import { permissions } from '@/auth/permissions'
 
@@ -22,6 +22,78 @@ const authenticatedUser: CurrentUser = {
   permissions: [],
   capabilities: { manage_members: false },
 }
+
+function LocationProbe() {
+  const location = useLocation()
+
+  return <p>{location.pathname + location.search}</p>
+}
+
+describe('PublicOnlyRoute', () => {
+  it('continues an existing SSO session to the requested authorization transaction', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(authenticatedUser), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const returnTo =
+      '/oauth/authorize/continue?transaction_id=transaction-123&state=state-0123456789'
+
+    renderWithProviders(
+      <Routes>
+        <Route element={<PublicOnlyRoute />}>
+          <Route path="/login" element={<p>Login page</p>} />
+        </Route>
+
+        <Route path="/oauth/authorize/continue" element={<LocationProbe />} />
+      </Routes>,
+      {
+        route: `/login?return_to=${encodeURIComponent(returnTo)}`,
+      },
+    )
+
+    expect(await screen.findByText(returnTo)).toBeInTheDocument()
+    expect(screen.queryByText('Login page')).not.toBeInTheDocument()
+  })
+
+  it('allows forced login when switching authorization tenants', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(authenticatedUser), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const returnTo =
+      '/oauth/authorize/continue?transaction_id=transaction-456&state=state-9876543210'
+
+    renderWithProviders(
+      <Routes>
+        <Route element={<PublicOnlyRoute />}>
+          <Route path="/login" element={<p>Login page</p>} />
+        </Route>
+
+        <Route path="/oauth/authorize/continue" element={<LocationProbe />} />
+      </Routes>,
+      {
+        route: `/login?force=1&tenant_slug=beta&return_to=` + encodeURIComponent(returnTo),
+      },
+    )
+
+    expect(await screen.findByText('Login page')).toBeInTheDocument()
+    expect(screen.queryByText(returnTo)).not.toBeInTheDocument()
+  })
+})
 
 describe('RequireFullyAuthenticated', () => {
   it('waits for current-user bootstrap before deciding where to navigate', async () => {

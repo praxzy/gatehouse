@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { APIError, isServiceUnavailableError } from '@/api/client'
 import { ServiceUnavailablePage } from '@/components/ServiceUnavailablePage'
 import { Spinner } from '@/components/ui/spinner'
@@ -9,6 +9,7 @@ import { hasPermission } from '@/auth/permissions'
 
 export function PublicOnlyRoute() {
   const currentUser = useCurrentUser()
+  const [searchParams] = useSearchParams()
 
   if (currentUser.isPending) {
     return <AuthenticationLoading />
@@ -26,7 +27,16 @@ export function PublicOnlyRoute() {
     throw currentUser.error
   }
 
-  return <Navigate to={authenticatedDestination(currentUser.data)} replace />
+  if (searchParams.get('force') === '1') {
+    return <Outlet />
+  }
+
+  return (
+    <Navigate
+      to={authenticatedDestination(currentUser.data, searchParams.get('return_to'))}
+      replace
+    />
+  )
 }
 
 export function RequireSession() {
