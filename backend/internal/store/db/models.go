@@ -5,6 +5,8 @@
 package db
 
 import (
+	"net/netip"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -44,6 +46,25 @@ type ApplicationAccess struct {
 	ApplicationID pgtype.UUID        `json:"application_id"`
 	RoleID        pgtype.UUID        `json:"role_id"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type AuditEvent struct {
+	ID                pgtype.UUID        `json:"id"`
+	TenantID          pgtype.UUID        `json:"tenant_id"`
+	ActorKind         string             `json:"actor_kind"`
+	ActorUserID       pgtype.UUID        `json:"actor_user_id"`
+	ActorMembershipID pgtype.UUID        `json:"actor_membership_id"`
+	ApplicationID     pgtype.UUID        `json:"application_id"`
+	SessionID         pgtype.UUID        `json:"session_id"`
+	EventType         string             `json:"event_type"`
+	Outcome           string             `json:"outcome"`
+	SubjectType       *string            `json:"subject_type"`
+	SubjectID         pgtype.UUID        `json:"subject_id"`
+	RequestID         *string            `json:"request_id"`
+	SourceIp          *netip.Addr        `json:"source_ip"`
+	UserAgent         *string            `json:"user_agent"`
+	Metadata          []byte             `json:"metadata"`
+	OccurredAt        pgtype.Timestamptz `json:"occurred_at"`
 }
 
 type AuthorizationCode struct {

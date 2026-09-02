@@ -23,6 +23,7 @@ type Querier interface {
 	CountAvailableMFARecoveryCodes(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CreateActiveMembership(ctx context.Context, arg CreateActiveMembershipParams) (Membership, error)
 	CreateApplication(ctx context.Context, arg CreateApplicationParams) (CreateApplicationRow, error)
+	CreateAuditEvent(ctx context.Context, arg CreateAuditEventParams) (AuditEvent, error)
 	CreateAuthorizationTransaction(ctx context.Context, arg CreateAuthorizationTransactionParams) (AuthorizationTransaction, error)
 	CreateCustomRole(ctx context.Context, arg CreateCustomRoleParams) (Role, error)
 	CreateMFARecoveryCode(ctx context.Context, arg CreateMFARecoveryCodeParams) error
@@ -69,6 +70,7 @@ type Querier interface {
 	ListRolePermissions(ctx context.Context, arg ListRolePermissionsParams) ([]string, error)
 	ListRoles(ctx context.Context, tenantID pgtype.UUID) ([]Role, error)
 	ListRolesForMembership(ctx context.Context, arg ListRolesForMembershipParams) ([]Role, error)
+	ListTenantAuditEvents(ctx context.Context, arg ListTenantAuditEventsParams) ([]ListTenantAuditEventsRow, error)
 	ListTenantMembers(ctx context.Context, tenantID pgtype.UUID) ([]ListTenantMembersRow, error)
 	ListTenantRolesWithPermissions(ctx context.Context, tenantID pgtype.UUID) ([]ListTenantRolesWithPermissionsRow, error)
 	LockOwnerRoleForUpdate(ctx context.Context, tenantID pgtype.UUID) (pgtype.UUID, error)
