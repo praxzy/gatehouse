@@ -63,6 +63,17 @@ export type CreateApplicationResponse = {
   client_secret?: string
 }
 
+export type UpdateApplicationAccessPolicyInput = {
+  access_mode: ApplicationAccessMode
+  allowed_role_ids: string[]
+}
+
+export type ApplicationAccessPolicy = {
+  access_mode: ApplicationAccessMode
+  allowed_roles: ApplicationAccessRole[]
+  updated_at: string
+}
+
 export function getApplications(signal?: AbortSignal) {
   return apiRequest<ApplicationListResponse>('/applications', {
     signal,
@@ -80,4 +91,17 @@ export function createApplication(input: CreateApplicationInput) {
     method: 'POST',
     body: input,
   })
+}
+
+export function updateApplicationAccessPolicy(
+  applicationId: string,
+  input: UpdateApplicationAccessPolicyInput,
+) {
+  return apiRequest<ApplicationAccessPolicy>(
+    `/applications/${encodeURIComponent(applicationId)}/access-policy`,
+    {
+      method: 'PATCH',
+      body: input,
+    },
+  )
 }

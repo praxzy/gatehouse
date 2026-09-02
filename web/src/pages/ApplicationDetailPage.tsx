@@ -2,6 +2,10 @@ import { ArrowLeft, Check, Copy, Globe2, KeyRound, Link2, Users } from 'lucide-r
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useApplication } from '@/applications/queries'
+import { ApplicationAccessPolicySheet } from '@/applications/ApplicationAccessPolicySheet'
+import { useCurrentUser } from '@/auth/currentUser'
+import { hasPermission, permissions } from '@/auth/permissions'
+import { useRoles } from '@/roles/queries'
 import { RequestError } from '@/components/RequestError'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -10,6 +14,19 @@ import { Surface } from '@/components/ui/surface'
 export function ApplicationDetailPage() {
   const { applicationId = '' } = useParams()
   const application = useApplication(applicationId)
+
+  const currentUser = useCurrentUser()
+
+  const canManageApplications = currentUser.data
+    ? hasPermission(currentUser.data.permissions, permissions.applicationManage)
+    : false
+
+  const canReadRoles = currentUser.data
+    ? hasPermission(currentUser.data.permissions, permissions.roleRead)
+    : false
+
+  const canEditAccessPolicy = canManageApplications && canReadRoles
+  const roles = useRoles(canEditAccessPolicy)
 
   if (applicationId === '') {
     return <Navigate to="/app/applications" replace />
@@ -182,23 +199,35 @@ export function ApplicationDetailPage() {
 
         <div className="space-y-5">
           <Surface className="p-6">
-            <div className="flex items-center gap-3">
-              <div
-                className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary"
-                aria-hidden="true"
-              >
-                <Users size={18} />
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary"
+                  aria-hidden="true"
+                >
+                  <Users size={18} />
+                </div>
+
+                <div>
+                  <h2 className="text-base font-semibold">Application access</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {detail.access_mode === 'all_active_members'
+                      ? 'Available to all active members'
+                      : 'Limited to selected roles'}
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <h2 className="text-base font-semibold">Application access</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {detail.access_mode === 'all_active_members'
-                    ? 'Available to all active members'
-                    : 'Limited to selected roles'}
-                </p>
-              </div>
+              {canEditAccessPolicy && roles.data && (
+                <ApplicationAccessPolicySheet application={detail} roles={roles.data.roles} />
+              )}
             </div>
+
+            {canEditAccessPolicy && roles.isError && (
+              <div className="mt-5">
+                <RequestError error={roles.error} />
+              </div>
+            )}
 
             {detail.access_mode === 'allowed_roles' && (
               <ul className="mt-5 space-y-2">

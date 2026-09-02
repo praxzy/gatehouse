@@ -3,7 +3,10 @@ import {
   createApplication,
   getApplication,
   getApplications,
+  updateApplicationAccessPolicy,
+  type ApplicationDetail,
   type CreateApplicationInput,
+  type UpdateApplicationAccessPolicyInput,
 } from '@/api/applications'
 
 export const applicationsQueryKey = ['applications'] as const
@@ -46,6 +49,32 @@ export function useCreateApplication() {
       queryClient.setQueryData(
         applicationQueryKey(result.application.application_id),
         result.application,
+      )
+
+      await queryClient.invalidateQueries({
+        queryKey: applicationsQueryKey,
+      })
+    },
+  })
+}
+
+export function useUpdateApplicationAccessPolicy(applicationId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: UpdateApplicationAccessPolicyInput) =>
+      updateApplicationAccessPolicy(applicationId, input),
+
+    onSuccess: async (policy) => {
+      queryClient.setQueryData<ApplicationDetail>(applicationQueryKey(applicationId), (current) =>
+        current
+          ? {
+              ...current,
+              access_mode: policy.access_mode,
+              allowed_roles: policy.allowed_roles,
+              updated_at: policy.updated_at,
+            }
+          : current,
       )
 
       await queryClient.invalidateQueries({
