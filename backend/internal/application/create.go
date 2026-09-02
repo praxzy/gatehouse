@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
@@ -184,6 +185,35 @@ func (service *Service) CreateApplication(
 					err,
 				)
 		}
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			ApplicationID:     created.ID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventApplicationCreated,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "application",
+			SubjectID:         created.ID,
+			Metadata: audit.Metadata{
+				"client_type":        created.ClientType,
+				"access_mode":        created.AccessMode,
+				"redirect_uri_count": len(createdRedirectURIs),
+				"allowed_role_count": len(allowedRoles),
+			},
+		},
+	)
+	if err != nil {
+		return CreateApplicationResult{}, fmt.Errorf(
+			"audit application creation: %w",
+			err,
+		)
 	}
 
 	if err := transaction.Commit(ctx); err != nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
@@ -152,24 +153,29 @@ func (service *Service) CreateAuthenticatedSession(
 		)
 	}
 
+	rotatedPreviousSession := false
+
 	if previousToken != "" {
 		previousHash, hashErr := hashSessionToken(previousToken)
 		if hashErr == nil {
 			reason := "rotated_after_authentication"
 
-			_, err = queries.RevokeSessionByTokenHash(
-				ctx,
-				store.RevokeSessionByTokenHashParams{
-					RevocationReason: &reason,
-					TokenHash:        previousHash,
-				},
-			)
-			if err != nil {
+			revokedSessions, revokeErr :=
+				queries.RevokeSessionByTokenHash(
+					ctx,
+					store.RevokeSessionByTokenHashParams{
+						RevocationReason: &reason,
+						TokenHash:        previousHash,
+					},
+				)
+			if revokeErr != nil {
 				return SessionGrant{}, fmt.Errorf(
 					"revoke previous session: %w",
-					err,
+					revokeErr,
 				)
 			}
+
+			rotatedPreviousSession = revokedSessions > 0
 		}
 	}
 
@@ -185,19 +191,71 @@ func (service *Service) CreateAuthenticatedSession(
 		},
 	)
 	if err != nil {
-		return SessionGrant{}, fmt.Errorf("create session: %w", err)
+		return SessionGrant{}, fmt.Errorf(
+			"create session: %w",
+			err,
+		)
+	}
+	if !session.ExpiresAt.Valid {
+		return SessionGrant{}, errors.New(
+			"created session has no expiration",
+		)
+	}
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.ID,
+			Type:              audit.EventLogin,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "session",
+			SubjectID:         session.ID,
+			Metadata: audit.Metadata{
+				"authentication_method": "password",
+			},
+		},
+	)
+	if err != nil {
+		return SessionGrant{}, fmt.Errorf(
+			"audit successful login: %w",
+			err,
+		)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.ID,
+			Type:              audit.EventSessionCreated,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "session",
+			SubjectID:         session.ID,
+			Metadata: audit.Metadata{
+				"authentication_level":     session.AuthenticationLevel,
+				"rotated_previous_session": rotatedPreviousSession,
+			},
+		},
+	)
+	if err != nil {
+		return SessionGrant{}, fmt.Errorf(
+			"audit session creation: %w",
+			err,
+		)
 	}
 
 	if err := transaction.Commit(ctx); err != nil {
 		return SessionGrant{}, fmt.Errorf(
 			"commit session transaction: %w",
 			err,
-		)
-	}
-
-	if !session.ExpiresAt.Valid {
-		return SessionGrant{}, errors.New(
-			"created session has no expiration",
 		)
 	}
 

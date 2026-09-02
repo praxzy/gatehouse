@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
@@ -217,6 +218,30 @@ func (service *Service) Register(
 	if err != nil {
 		return RegisterResult{}, fmt.Errorf(
 			"assign owner role: %w",
+			err,
+		)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          tenant.ID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       user.ID,
+			ActorMembershipID: membership.ID,
+			Type:              audit.EventRegistration,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "tenant",
+			SubjectID:         tenant.ID,
+			Metadata: audit.Metadata{
+				"tenant_slug": tenant.Slug,
+			},
+		},
+	)
+	if err != nil {
+		return RegisterResult{}, fmt.Errorf(
+			"audit registration: %w",
 			err,
 		)
 	}
