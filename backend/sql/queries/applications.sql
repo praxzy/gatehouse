@@ -156,3 +156,29 @@ ORDER BY
     role.is_system DESC,
     lower(role.name),
     role.id;
+
+
+-- name: UpdateApplicationAccessMode :one
+UPDATE applications
+SET
+    access_mode = sqlc.arg(access_mode),
+    updated_at = now()
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND id = sqlc.arg(application_id)
+RETURNING
+    id,
+    tenant_id,
+    name,
+    description,
+    client_id,
+    client_type,
+    status,
+    access_mode,
+    created_at,
+    updated_at;
+
+
+-- name: DeleteApplicationAccessRoles :exec
+DELETE FROM application_access
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND application_id = sqlc.arg(application_id);

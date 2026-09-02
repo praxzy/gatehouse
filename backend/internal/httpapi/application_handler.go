@@ -29,6 +29,12 @@ type ApplicationService interface {
 		session auth.SessionContext,
 		applicationID pgtype.UUID,
 	) (application.ApplicationDetail, error)
+
+	UpdateApplicationAccessPolicy(
+		ctx context.Context,
+		session auth.SessionContext,
+		input application.UpdateApplicationAccessPolicyInput,
+	) (application.ApplicationAccessPolicy, error)
 }
 
 type applicationHandler struct {
@@ -42,6 +48,17 @@ type createApplicationRequest struct {
 	RedirectURIs   []string `json:"redirect_uris"`
 	AccessMode     string   `json:"access_mode"`
 	AllowedRoleIDs []string `json:"allowed_role_ids"`
+}
+
+type updateApplicationAccessPolicyRequest struct {
+	AccessMode     string   `json:"access_mode"`
+	AllowedRoleIDs []string `json:"allowed_role_ids"`
+}
+
+type applicationAccessPolicyResponse struct {
+	AccessMode   string                          `json:"access_mode"`
+	AllowedRoles []applicationAccessRoleResponse `json:"allowed_roles"`
+	UpdatedAt    string                          `json:"updated_at"`
 }
 
 type applicationSummaryResponse struct {
@@ -393,4 +410,104 @@ func writeApplicationError(
 			"internal server error",
 		)
 	}
+}
+
+func (handler applicationHandler) updateApplicationAccessPolicy(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	session, ok := sessionFromContext(request.Context())
+	if !ok {
+		writeError(
+			writer,
+			http.StatusUnauthorized,
+			"authentication required",
+		)
+	}
+
+	applicationID, err := parseRequestUUID(
+		chi.URLParam(request, "applicationID"),
+	)
+	if err != nil {
+		writeError(
+			writer,
+			http.StatusBadRequest,
+			"invalid application",
+		)
+		return
+	}
+
+	var body updateApplicationAccessPolicyRequest
+	if err := decodeJSON(writer, request, &body); err != nil {
+		writeError(
+			writer,
+			http.StatusBadRequest,
+			"invalid request",
+		)
+		return
+	}
+
+	allowedRoleIDs := make(
+		[]pgtype.UUID,
+		0,
+		len(body.AllowedRoleIDs),
+	)
+
+	for _, value := range body.AllowedRoleIDs {
+		roleID, err := parseRequestUUID(value)
+		if err != nil {
+			writeError(
+				writer,
+				http.StatusBadRequest,
+				"invalid application",
+			)
+			return
+		}
+
+		allowedRoleIDs = append(allowedRoleIDs, roleID)
+	}
+
+	result, err := handler.applications.UpdateApplicationAccessPolicy(
+		request.Context(),
+		session,
+		application.UpdateApplicationAccessPolicyInput{
+			ApplicationID: applicationID,
+			AccessMode: application.AccessMode(
+				body.AccessMode,
+			),
+			AllowedRoleIDs: allowedRoleIDs,
+		},
+	)
+	if err != nil {
+		writeApplicationError(writer, err)
+		return
+	}
+
+	allowedRoles := make(
+		[]applicationAccessRoleResponse,
+		0,
+		len(result.AllowedRoles),
+	)
+
+	for _, role := range result.AllowedRoles {
+		allowedRoles = append(
+			allowedRoles,
+			applicationAccessRoleResponse{
+				RoleID:   formatUUID(role.RoleID),
+				RoleKey:  role.RoleKey,
+				Name:     role.Name,
+				IsSystem: role.IsSystem,
+			},
+		)
+	}
+
+	writeJSON(
+		writer,
+		http.StatusOK,
+		applicationAccessPolicyResponse{
+			AccessMode:   string(result.AccessMode),
+			AllowedRoles: allowedRoles,
+			UpdatedAt:    result.UpdatedAt.Format(timeFormat),
+		},
+	)
 }

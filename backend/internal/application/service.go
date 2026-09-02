@@ -108,6 +108,18 @@ type CreateApplicationResult struct {
 	ClientSecret string
 }
 
+type UpdateApplicationAccessPolicyInput struct {
+	ApplicationID  pgtype.UUID
+	AccessMode     AccessMode
+	AllowedRoleIDs []pgtype.UUID
+}
+
+type ApplicationAccessPolicy struct {
+	AccessMode   AccessMode
+	AllowedRoles []ApplicationAccessRole
+	UpdatedAt    time.Time
+}
+
 func NewService(
 	pool *pgxpool.Pool,
 ) (*Service, error) {

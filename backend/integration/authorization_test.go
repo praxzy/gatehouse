@@ -680,7 +680,7 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 		)
 	}
 
-	createAuthorizationPolicyMember(
+	viewerMembershipID := createAuthorizationPolicyMember(
 		t,
 		ctx,
 		pool,
@@ -896,17 +896,17 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 		},
 	)
 
+	viewerCookie := loginLifecycleUser(
+		t,
+		router,
+		"policy-company",
+		"viewer@policy.test",
+		"correct horse battery staple",
+	)
+
 	t.Run(
 		"member excluded by application policy is denied",
 		func(t *testing.T) {
-			memberCookie := loginLifecycleUser(
-				t,
-				router,
-				"policy-company",
-				"viewer@policy.test",
-				"correct horse battery staple",
-			)
-
 			const deniedState = "viewer-denied-state-0123456789"
 
 			response := performRequest(
@@ -920,7 +920,7 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 					},
 				),
 				nil,
-				memberCookie,
+				viewerCookie,
 			)
 
 			requireResponseStatus(
@@ -983,7 +983,7 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 				http.MethodGet,
 				replayTarget,
 				nil,
-				memberCookie,
+				viewerCookie,
 			)
 
 			requireResponseStatus(
@@ -1001,6 +1001,54 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 			}
 		},
 	)
+
+	t.Run(
+		"role change allows previously denied member",
+		func(t *testing.T) {
+			updateResponse := performLifecycleJSONRequest(
+				t,
+				router,
+				http.MethodPatch,
+				"/api/v1/members/"+
+					lifecycleUUID(t, viewerMembershipID),
+				map[string]any{
+					"role_id": lifecycleUUID(
+						t,
+						registration.OwnerRoleID,
+					),
+				},
+				ownerMFACookie,
+			)
+
+			requireResponseStatus(
+				t,
+				updateResponse,
+				http.StatusNoContent,
+			)
+
+			const allowedState = "viewer-allowed-state-0123456789"
+
+			response := performRequest(
+				t,
+				router,
+				http.MethodGet,
+				authorizationRequestTarget(
+					map[string]string{
+						"state": allowedState,
+						"nonce": "viewer-allowed-nonce-0123456789",
+					},
+				),
+				nil,
+				viewerCookie,
+			)
+
+			requireAuthorizationGrant(
+				t,
+				response,
+				allowedState,
+			)
+		},
+	)
 }
 
 func createAuthorizationPolicyMember(
@@ -1008,7 +1056,7 @@ func createAuthorizationPolicyMember(
 	ctx context.Context,
 	pool *pgxpool.Pool,
 	tenantID pgtype.UUID,
-) {
+) pgtype.UUID {
 	t.Helper()
 
 	passwordHash, err := auth.HashPassword(
@@ -1139,6 +1187,8 @@ func createAuthorizationPolicyMember(
 			err,
 		)
 	}
+
+	return membershipID
 }
 
 func requireAuthorizationFlowRedirect(

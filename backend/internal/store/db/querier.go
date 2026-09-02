@@ -34,6 +34,7 @@ type Querier interface {
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (CreateTenantRow, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	CreateUserForInvitation(ctx context.Context, arg CreateUserForInvitationParams) (User, error)
+	DeleteApplicationAccessRoles(ctx context.Context, arg DeleteApplicationAccessRolesParams) error
 	DeleteMembershipRoles(ctx context.Context, arg DeleteMembershipRolesParams) error
 	DeleteRolePermissions(ctx context.Context, arg DeleteRolePermissionsParams) error
 	EvaluateAuthorizationSession(ctx context.Context, arg EvaluateAuthorizationSessionParams) (EvaluateAuthorizationSessionRow, error)
@@ -79,6 +80,7 @@ type Querier interface {
 	RevokeSessionByID(ctx context.Context, arg RevokeSessionByIDParams) (int64, error)
 	RevokeSessionByTokenHash(ctx context.Context, arg RevokeSessionByTokenHashParams) (int64, error)
 	RevokeSessionsForMembership(ctx context.Context, arg RevokeSessionsForMembershipParams) (int64, error)
+	UpdateApplicationAccessMode(ctx context.Context, arg UpdateApplicationAccessModeParams) (UpdateApplicationAccessModeRow, error)
 	UpdateCustomRole(ctx context.Context, arg UpdateCustomRoleParams) (Role, error)
 	UpdateMembershipStatus(ctx context.Context, arg UpdateMembershipStatusParams) (Membership, error)
 	UpsertEmailVerificationToken(ctx context.Context, arg UpsertEmailVerificationTokenParams) (EmailVerificationToken, error)

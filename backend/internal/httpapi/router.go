@@ -165,6 +165,15 @@ func NewRouter(dependencies Dependencies) http.Handler {
 					"/api/v1/applications/{applicationID}",
 					applicationHandler.getApplication,
 				)
+
+				router.With(
+					requirePermission(
+						auth.PermissionApplicationManage,
+					),
+				).Patch(
+					"/api/v1/applications/{applicationID}/access-policy",
+					applicationHandler.updateApplicationAccessPolicy,
+				)
 			}
 		})
 

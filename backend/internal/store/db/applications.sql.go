@@ -160,6 +160,22 @@ func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationPa
 	return i, err
 }
 
+const deleteApplicationAccessRoles = `-- name: DeleteApplicationAccessRoles :exec
+DELETE FROM application_access
+WHERE tenant_id = $1
+  AND application_id = $2
+`
+
+type DeleteApplicationAccessRolesParams struct {
+	TenantID      pgtype.UUID `json:"tenant_id"`
+	ApplicationID pgtype.UUID `json:"application_id"`
+}
+
+func (q *Queries) DeleteApplicationAccessRoles(ctx context.Context, arg DeleteApplicationAccessRolesParams) error {
+	_, err := q.db.Exec(ctx, deleteApplicationAccessRoles, arg.TenantID, arg.ApplicationID)
+	return err
+}
+
 const getApplicationByID = `-- name: GetApplicationByID :one
 SELECT
     application.id,
@@ -402,4 +418,61 @@ func (q *Queries) ListApplications(ctx context.Context, tenantID pgtype.UUID) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateApplicationAccessMode = `-- name: UpdateApplicationAccessMode :one
+UPDATE applications
+SET
+    access_mode = $1,
+    updated_at = now()
+WHERE tenant_id = $2
+  AND id = $3
+RETURNING
+    id,
+    tenant_id,
+    name,
+    description,
+    client_id,
+    client_type,
+    status,
+    access_mode,
+    created_at,
+    updated_at
+`
+
+type UpdateApplicationAccessModeParams struct {
+	AccessMode    string      `json:"access_mode"`
+	TenantID      pgtype.UUID `json:"tenant_id"`
+	ApplicationID pgtype.UUID `json:"application_id"`
+}
+
+type UpdateApplicationAccessModeRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	TenantID    pgtype.UUID        `json:"tenant_id"`
+	Name        string             `json:"name"`
+	Description *string            `json:"description"`
+	ClientID    string             `json:"client_id"`
+	ClientType  string             `json:"client_type"`
+	Status      string             `json:"status"`
+	AccessMode  string             `json:"access_mode"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) UpdateApplicationAccessMode(ctx context.Context, arg UpdateApplicationAccessModeParams) (UpdateApplicationAccessModeRow, error) {
+	row := q.db.QueryRow(ctx, updateApplicationAccessMode, arg.AccessMode, arg.TenantID, arg.ApplicationID)
+	var i UpdateApplicationAccessModeRow
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Name,
+		&i.Description,
+		&i.ClientID,
+		&i.ClientType,
+		&i.Status,
+		&i.AccessMode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

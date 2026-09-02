@@ -218,6 +218,143 @@ func TestOIDCApplicationRegistrationLifecycle(
 	}
 
 	t.Run(
+		"invalid access role rolls back policy update",
+		func(t *testing.T) {
+			response := performLifecycleJSONRequest(
+				t,
+				router,
+				http.MethodPatch,
+				"/api/v1/applications/"+
+					created.Application.ApplicationID+
+					"/access-policy",
+				map[string]any{
+					"access_mode": "allowed_roles",
+					"allowed_role_ids": []string{
+						"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+					},
+				},
+				ownerCookie,
+			)
+
+			requireResponseStatus(
+				t,
+				response,
+				http.StatusBadRequest,
+			)
+
+			var (
+				accessMode string
+				roleCount  int
+			)
+
+			if err := pool.QueryRow(
+				ctx,
+				`
+					SELECT
+						application.access_mode,
+						(
+							SELECT count(*)
+							FROM application_access AS access
+							WHERE access.tenant_id =
+							      application.tenant_id
+							  AND access.application_id =
+							      application.id
+						)
+					FROM applications AS application
+					WHERE application.tenant_id = $1
+					  AND application.id = $2
+				`,
+				registration.TenantID,
+				created.Application.ApplicationID,
+			).Scan(
+				&accessMode,
+				&roleCount,
+			); err != nil {
+				t.Fatalf(
+					"load application policy after rejection: %v",
+					err,
+				)
+			}
+
+			if accessMode != "all_active_members" {
+				t.Fatalf(
+					"failed policy update changed mode to %q",
+					accessMode,
+				)
+			}
+
+			if roleCount != 0 {
+				t.Fatalf(
+					"failed policy update stored %d roles",
+					roleCount,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"owner restricts application to selected roles",
+		func(t *testing.T) {
+			ownerRoleID := lifecycleUUID(
+				t,
+				registration.OwnerRoleID,
+			)
+
+			response := performLifecycleJSONRequest(
+				t,
+				router,
+				http.MethodPatch,
+				"/api/v1/applications/"+
+					created.Application.ApplicationID+
+					"/access-policy",
+				map[string]any{
+					"access_mode": "allowed_roles",
+					"allowed_role_ids": []string{
+						ownerRoleID,
+					},
+				},
+				ownerCookie,
+			)
+
+			body := requireResponseStatus(
+				t,
+				response,
+				http.StatusOK,
+			)
+
+			var policy struct {
+				AccessMode   string `json:"access_mode"`
+				AllowedRoles []struct {
+					RoleID string `json:"role_id"`
+					Name   string `json:"name"`
+				} `json:"allowed_roles"`
+			}
+
+			if err := json.Unmarshal(body, &policy); err != nil {
+				t.Fatalf(
+					"decode updated access policy: %v",
+					err,
+				)
+			}
+
+			if policy.AccessMode != "allowed_roles" {
+				t.Fatalf(
+					"expected allowed_roles, got %q",
+					policy.AccessMode,
+				)
+			}
+
+			if len(policy.AllowedRoles) != 1 ||
+				policy.AllowedRoles[0].RoleID != ownerRoleID {
+				t.Fatalf(
+					"unexpected allowed roles: %+v",
+					policy.AllowedRoles,
+				)
+			}
+		},
+	)
+
+	t.Run(
 		"normal detail response never returns secret",
 		func(t *testing.T) {
 			response := performRequest(
