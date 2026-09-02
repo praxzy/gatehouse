@@ -6,7 +6,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
-	"slices"
+	"strings"
 	"time"
 
 	"github.com/praxzy/gatehouse/examples/employee-portal/internal/oidcclient"
@@ -482,5 +482,11 @@ func hasRole(
 	identity oidcclient.Identity,
 	role string,
 ) bool {
-	return slices.Contains(identity.Roles, role)
+	for _, assignedRole := range identity.Roles {
+		if strings.EqualFold(assignedRole, role) {
+			return true
+		}
+	}
+
+	return false
 }

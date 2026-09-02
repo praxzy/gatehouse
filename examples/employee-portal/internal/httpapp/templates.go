@@ -80,7 +80,7 @@ const pageTemplates = `
 
 {{define "admin"}}
 {{template "header" .}}
-<main><section class="panel"><p class="eyebrow">Role-protected route</p><h1>Admin workspace</h1><p class="lede">This page is available because the independently verified ID token contains the exact <strong>Admin</strong> role for {{.Identity.Email}}.</p><a href="/">Return home</a></section></main>
+<main><section class="panel"><p class="eyebrow">Role-protected route</p><h1>Admin workspace</h1><p class="lede">This page is available because the independently verified ID token contains the <strong>Admin</strong> role for {{.Identity.Email}}.</p><a href="/">Return home</a></section></main>
 {{template "footer" .}}
 {{end}}
 

@@ -248,6 +248,22 @@ func TestAdminRequiresSignedAdminRole(t *testing.T) {
 	}
 }
 
+func TestAdminRoleMatchingIsCaseInsensitive(t *testing.T) {
+	for _, role := range []string{"Admin", "admin", "ADMIN", "AdMiN"} {
+		t.Run(role, func(t *testing.T) {
+			identity := oidcclient.Identity{Roles: []string{role}}
+			if !hasRole(identity, "Admin") {
+				t.Fatalf("expected role %q to match Admin", role)
+			}
+		})
+	}
+
+	identity := oidcclient.Identity{Roles: []string{"Administrator"}}
+	if hasRole(identity, "Admin") {
+		t.Fatal("Administrator must not match Admin")
+	}
+}
+
 func TestLogoutRejectsMismatchedCSRFToken(t *testing.T) {
 	store := session.NewStore()
 	app, err := New(&stubOIDCClient{}, store, false)
