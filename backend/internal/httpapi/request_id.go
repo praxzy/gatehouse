@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 )
 
 const requestIDHeader = "X-Request-ID"
@@ -24,6 +26,22 @@ func attachRequestID(next http.Handler) http.Handler {
 			request.Context(),
 			requestIDContextKey{},
 			requestID,
+		)
+
+		requestDetails := audit.NewRequestDetails(
+			requestID,
+			nil,
+			request.UserAgent(),
+		)
+
+		sourceIP, err := directClientAddress(request)
+		if err == nil {
+			requestDetails.SourceIP = &sourceIP
+		}
+
+		ctx = audit.WithRequestDetails(
+			ctx,
+			requestDetails,
 		)
 
 		next.ServeHTTP(writer, request.WithContext(ctx))

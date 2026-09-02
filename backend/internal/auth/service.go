@@ -7,6 +7,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
+
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 )
 
 var ErrInvalidServiceConfiguration = errors.New(
@@ -18,6 +20,7 @@ type ServiceOption func(*Service) error
 type Service struct {
 	pool                       *pgxpool.Pool
 	queries                    *store.Queries
+	auditWriter                audit.EventWriter
 	loginRateLimiter           LoginRateLimiter
 	dummyPasswordHash          string
 	mfaSecretCipher            MFASecretCipher
@@ -67,9 +70,10 @@ func WithMembershipInvitationSender(
 func NewService(
 	pool *pgxpool.Pool,
 	loginRateLimiter LoginRateLimiter,
+	auditWriter audit.EventWriter,
 	options ...ServiceOption,
 ) (*Service, error) {
-	if pool == nil || loginRateLimiter == nil {
+	if pool == nil || loginRateLimiter == nil || auditWriter == nil {
 		return nil, ErrInvalidServiceConfiguration
 	}
 
@@ -83,6 +87,7 @@ func NewService(
 	service := &Service{
 		pool:              pool,
 		queries:           store.New(pool),
+		auditWriter:       auditWriter,
 		loginRateLimiter:  loginRateLimiter,
 		dummyPasswordHash: dummyPasswordHash,
 	}

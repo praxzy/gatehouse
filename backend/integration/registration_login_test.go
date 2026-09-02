@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 )
 
@@ -407,6 +408,40 @@ func newAuthenticationTestServiceWithSenders(
 ) (*auth.Service, *pgxpool.Pool) {
 	t.Helper()
 
+	return newAuthenticationTestServiceWithDependencies(
+		t,
+		ctx,
+		emailSender,
+		invitationSender,
+		audit.NewWriter(),
+	)
+}
+
+func newAuthenticationTestServiceWithAuditWriter(
+	t *testing.T,
+	ctx context.Context,
+	auditWriter audit.EventWriter,
+) (*auth.Service, *pgxpool.Pool) {
+	t.Helper()
+
+	return newAuthenticationTestServiceWithDependencies(
+		t,
+		ctx,
+		discardEmailVerificationSender{},
+		discardMembershipInvitationSender{},
+		auditWriter,
+	)
+}
+
+func newAuthenticationTestServiceWithDependencies(
+	t *testing.T,
+	ctx context.Context,
+	emailSender auth.EmailVerificationSender,
+	invitationSender auth.MembershipInvitationSender,
+	auditWriter audit.EventWriter,
+) (*auth.Service, *pgxpool.Pool) {
+	t.Helper()
+
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -435,12 +470,11 @@ func newAuthenticationTestServiceWithSenders(
 	service, err := auth.NewService(
 		pool,
 		limiter,
+		auditWriter,
 		auth.WithMFASecretCipher(
 			newIntegrationMFASecretCipher(t),
 		),
-		auth.WithEmailVerificationSender(
-			emailSender,
-		),
+		auth.WithEmailVerificationSender(emailSender),
 		auth.WithMembershipInvitationSender(
 			invitationSender,
 		),

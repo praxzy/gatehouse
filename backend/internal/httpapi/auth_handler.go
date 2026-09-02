@@ -6,9 +6,7 @@ import (
 	"errors"
 	"io"
 	"math"
-	"net"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -498,22 +496,6 @@ func decodeJSON(
 	}
 
 	return nil
-}
-
-func directClientIP(request *http.Request) (string, error) {
-	remoteAddress := strings.TrimSpace(request.RemoteAddr)
-
-	host, _, err := net.SplitHostPort(remoteAddress)
-	if err != nil {
-		host = remoteAddress
-	}
-
-	address, err := netip.ParseAddr(host)
-	if err != nil {
-		return "", err
-	}
-
-	return address.Unmap().String(), nil
 }
 
 func formatUUID(value pgtype.UUID) string {

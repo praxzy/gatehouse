@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/praxzy/gatehouse/backend/internal/application"
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	"github.com/praxzy/gatehouse/backend/internal/httpapi"
 )
@@ -42,7 +43,10 @@ func TestOIDCApplicationRegistrationLifecycle(
 		registration.UserID,
 	)
 
-	applications, err := application.NewService(pool)
+	applications, err := application.NewService(
+		pool,
+		audit.NewWriter(),
+	)
 	if err != nil {
 		t.Fatalf("create application service: %v", err)
 	}

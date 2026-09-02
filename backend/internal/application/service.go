@@ -8,6 +8,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
+
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 )
 
 type ClientType string
@@ -49,8 +51,9 @@ var (
 )
 
 type Service struct {
-	pool    *pgxpool.Pool
-	queries *store.Queries
+	pool        *pgxpool.Pool
+	queries     *store.Queries
+	auditWriter audit.EventWriter
 }
 
 type CreateApplicationInput struct {
@@ -122,13 +125,15 @@ type ApplicationAccessPolicy struct {
 
 func NewService(
 	pool *pgxpool.Pool,
+	auditWriter audit.EventWriter,
 ) (*Service, error) {
-	if pool == nil {
+	if pool == nil || auditWriter == nil {
 		return nil, ErrInvalidServiceConfiguration
 	}
 
 	return &Service{
-		pool:    pool,
-		queries: store.New(pool),
+		pool:        pool,
+		queries:     store.New(pool),
+		auditWriter: auditWriter,
 	}, nil
 }

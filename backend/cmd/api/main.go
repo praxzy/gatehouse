@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/praxzy/gatehouse/backend/internal/application"
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	"github.com/praxzy/gatehouse/backend/internal/httpapi"
 	"github.com/praxzy/gatehouse/backend/internal/oidc"
@@ -58,6 +59,8 @@ func run() error {
 		return fmt.Errorf("ping database: %w", err)
 	}
 
+	auditWriter := audit.NewWriter()
+
 	loginLimiter, err := auth.NewLocalLoginRateLimiter(
 		10,
 		15*time.Minute,
@@ -86,6 +89,7 @@ func run() error {
 	authentication, err := auth.NewService(
 		pool,
 		loginLimiter,
+		auditWriter,
 		auth.WithMFASecretCipher(mfaSecretCipher),
 		auth.WithEmailVerificationSender(
 			emailVerificationSender,
@@ -101,7 +105,10 @@ func run() error {
 		)
 	}
 
-	applications, err := application.NewService(pool)
+	applications, err := application.NewService(
+		pool,
+		auditWriter,
+	)
 	if err != nil {
 		return fmt.Errorf(
 			"create application service: %w",
@@ -114,7 +121,10 @@ func run() error {
 		return err
 	}
 
-	oidcAuthorization, err := oidc.NewAuthorizationService(pool)
+	oidcAuthorization, err := oidc.NewAuthorizationService(
+		pool,
+		auditWriter,
+	)
 	if err != nil {
 		return fmt.Errorf(
 			"create OIDC authorization service: %w",
@@ -125,6 +135,7 @@ func run() error {
 	oidcTokens, err := oidc.NewTokenService(
 		pool,
 		oidcProvider,
+		auditWriter,
 	)
 	if err != nil {
 		return fmt.Errorf(

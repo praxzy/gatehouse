@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	"github.com/praxzy/gatehouse/backend/internal/httpapi"
 	"github.com/praxzy/gatehouse/backend/internal/oidc"
@@ -90,7 +91,10 @@ func TestSecureAuthorizationRequestLifecycle(
 	}
 
 	authorization, err :=
-		oidc.NewAuthorizationService(pool)
+		oidc.NewAuthorizationService(
+			pool,
+			audit.NewWriter(),
+		)
 	if err != nil {
 		t.Fatalf(
 			"create authorization service: %v",
@@ -688,7 +692,10 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 	)
 
 	authorization, err :=
-		oidc.NewAuthorizationService(pool)
+		oidc.NewAuthorizationService(
+			pool,
+			audit.NewWriter(),
+		)
 	if err != nil {
 		t.Fatalf(
 			"create authorization service: %v",

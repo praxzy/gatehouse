@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/praxzy/gatehouse/backend/internal/application"
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	"github.com/praxzy/gatehouse/backend/internal/httpapi"
 	"github.com/praxzy/gatehouse/backend/internal/oidc"
@@ -181,7 +182,10 @@ func TestAuthorizationCodeTokenExchange(
 	provider := newTokenTestProvider(t)
 
 	authorization, err :=
-		oidc.NewAuthorizationService(pool)
+		oidc.NewAuthorizationService(
+			pool,
+			audit.NewWriter(),
+		)
 	if err != nil {
 		t.Fatalf(
 			"create authorization service: %v",
@@ -192,6 +196,7 @@ func TestAuthorizationCodeTokenExchange(
 	tokens, err := oidc.NewTokenService(
 		pool,
 		provider,
+		audit.NewWriter(),
 	)
 	if err != nil {
 		t.Fatalf(

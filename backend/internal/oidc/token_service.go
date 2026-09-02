@@ -15,6 +15,8 @@ import (
 
 	"github.com/praxzy/gatehouse/backend/internal/application"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
+
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 )
 
 var (
@@ -52,29 +54,33 @@ type TokenResult struct {
 }
 
 type TokenService struct {
-	pool     *pgxpool.Pool
-	queries  *store.Queries
-	provider *Provider
-	now      func() time.Time
+	pool        *pgxpool.Pool
+	queries     *store.Queries
+	provider    *Provider
+	auditWriter audit.EventWriter
+	now         func() time.Time
 }
 
 func NewTokenService(
 	pool *pgxpool.Pool,
 	provider *Provider,
+	auditWriter audit.EventWriter,
 ) (*TokenService, error) {
 	if pool == nil ||
 		provider == nil ||
 		provider.signingKey == nil ||
 		provider.signingKey.privateKey == nil ||
-		provider.config.Issuer == "" {
+		provider.config.Issuer == "" ||
+		auditWriter == nil {
 		return nil, ErrInvalidTokenServiceConfiguration
 	}
 
 	return &TokenService{
-		pool:     pool,
-		queries:  store.New(pool),
-		provider: provider,
-		now:      time.Now,
+		pool:        pool,
+		queries:     store.New(pool),
+		provider:    provider,
+		auditWriter: auditWriter,
+		now:         time.Now,
 	}, nil
 }
 
@@ -88,7 +94,8 @@ func (service *TokenService) ExchangeAuthorizationCode(
 		service.queries == nil ||
 		service.provider == nil ||
 		service.provider.signingKey == nil ||
-		service.now == nil {
+		service.now == nil ||
+		service.auditWriter == nil {
 		return TokenResult{},
 			ErrInvalidTokenServiceConfiguration
 	}

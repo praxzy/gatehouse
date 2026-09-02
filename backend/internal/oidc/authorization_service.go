@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
+
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 )
 
 const authorizationTransactionLifetime = 5 * time.Minute
@@ -39,8 +41,9 @@ var (
 )
 
 type AuthorizationService struct {
-	queries *store.Queries
-	now     func() time.Time
+	queries     *store.Queries
+	auditWriter audit.EventWriter
+	now         func() time.Time
 }
 
 type PendingAuthorization struct {
@@ -75,14 +78,16 @@ func (protocolError *AuthorizationProtocolError) Unwrap() error {
 
 func NewAuthorizationService(
 	pool *pgxpool.Pool,
+	auditWriter audit.EventWriter,
 ) (*AuthorizationService, error) {
-	if pool == nil {
+	if pool == nil || auditWriter == nil {
 		return nil, ErrInvalidAuthorizationServiceConfiguration
 	}
 
 	return &AuthorizationService{
-		queries: store.New(pool),
-		now:     time.Now,
+		queries:     store.New(pool),
+		auditWriter: auditWriter,
+		now:         time.Now,
 	}, nil
 }
 
@@ -92,7 +97,8 @@ func (service *AuthorizationService) BeginAuthorization(
 ) (PendingAuthorization, error) {
 	if service == nil ||
 		service.queries == nil ||
-		service.now == nil {
+		service.now == nil ||
+		service.auditWriter == nil {
 		return PendingAuthorization{},
 			ErrInvalidAuthorizationServiceConfiguration
 	}
