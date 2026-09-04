@@ -94,6 +94,7 @@ var metadataAllowlists = map[EventType]map[string]struct{}{
 	},
 	EventMFAEnrollmentConfirmed: {
 		"recovery_code_count": {},
+		"failure_reason":      {},
 	},
 	EventMFAChallenge: {
 		"challenge_method": {},

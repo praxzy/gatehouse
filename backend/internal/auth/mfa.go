@@ -170,6 +170,67 @@ func (service *Service) ConfirmTOTPEnrollment(
 	session SessionContext,
 	code string,
 ) (MFAEnrollmentConfirmation, error) {
+	result, err := service.confirmTOTPEnrollment(
+		ctx,
+		session,
+		code,
+	)
+	if err == nil {
+		return result, nil
+	}
+
+	var failureReason string
+
+	switch {
+	case errors.Is(err, ErrInvalidMFAChallenge):
+		failureReason = "invalid_code"
+
+	case errors.Is(err, ErrMFAEnrollmentExpired):
+		failureReason = "enrollment_expired"
+
+	case errors.Is(err, ErrMFAEnrollmentNotFound):
+		failureReason = "enrollment_not_found"
+
+	case errors.Is(err, ErrMFAAlreadyEnrolled):
+		failureReason = "already_enrolled"
+
+	default:
+		return result, err
+	}
+
+	_, auditErr := service.auditWriter.Write(
+		ctx,
+		service.queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventMFAEnrollmentConfirmed,
+			Outcome:           audit.OutcomeFailure,
+			SubjectType:       "user",
+			SubjectID:         session.UserID,
+			Metadata: audit.Metadata{
+				"failure_reason": failureReason,
+			},
+		},
+	)
+	if auditErr != nil {
+		return MFAEnrollmentConfirmation{}, fmt.Errorf(
+			"audit rejected MFA enrollment confirmation: %w",
+			auditErr,
+		)
+	}
+
+	return result, err
+}
+
+func (service *Service) confirmTOTPEnrollment(
+	ctx context.Context,
+	session SessionContext,
+	code string,
+) (MFAEnrollmentConfirmation, error) {
 	if err := service.requireMFACipher(); err != nil {
 		return MFAEnrollmentConfirmation{}, err
 	}
@@ -325,6 +386,49 @@ func (service *Service) CompleteMFAWithTOTP(
 	session SessionContext,
 	code string,
 ) (MFAChallengeResult, error) {
+	result, err := service.completeMFAWithTOTP(
+		ctx,
+		session,
+		code,
+	)
+	if !errors.Is(err, ErrInvalidMFAChallenge) {
+		return result, err
+	}
+
+	_, auditErr := service.auditWriter.Write(
+		ctx,
+		service.queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventMFAChallenge,
+			Outcome:           audit.OutcomeFailure,
+			SubjectType:       "user",
+			SubjectID:         session.UserID,
+			Metadata: audit.Metadata{
+				"challenge_method": "totp",
+				"failure_reason":   "invalid_or_replayed_code",
+			},
+		},
+	)
+	if auditErr != nil {
+		return MFAChallengeResult{}, fmt.Errorf(
+			"audit rejected TOTP challenge: %w",
+			auditErr,
+		)
+	}
+
+	return result, err
+}
+
+func (service *Service) completeMFAWithTOTP(
+	ctx context.Context,
+	session SessionContext,
+	code string,
+) (MFAChallengeResult, error) {
 	if err := service.requireMFACipher(); err != nil {
 		return MFAChallengeResult{}, err
 	}
@@ -439,6 +543,48 @@ func (service *Service) CompleteMFAWithTOTP(
 }
 
 func (service *Service) CompleteMFAWithRecoveryCode(
+	ctx context.Context,
+	session SessionContext,
+	code string,
+) (MFAChallengeResult, error) {
+	result, err := service.completeMFAWithRecoveryCode(
+		ctx,
+		session,
+		code,
+	)
+	if !errors.Is(err, ErrInvalidMFAChallenge) {
+		return result, err
+	}
+
+	_, auditErr := service.auditWriter.Write(
+		ctx,
+		service.queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventMFARecoveryCode,
+			Outcome:           audit.OutcomeFailure,
+			SubjectType:       "user",
+			SubjectID:         session.UserID,
+			Metadata: audit.Metadata{
+				"failure_reason": "invalid_or_reused_code",
+			},
+		},
+	)
+	if auditErr != nil {
+		return MFAChallengeResult{}, fmt.Errorf(
+			"audit rejected recovery-code challenge: %w",
+			auditErr,
+		)
+	}
+
+	return result, err
+}
+
+func (service *Service) completeMFAWithRecoveryCode(
 	ctx context.Context,
 	session SessionContext,
 	code string,

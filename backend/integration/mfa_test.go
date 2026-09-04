@@ -494,6 +494,85 @@ func TestMFAStateMachineAndAdversarialCases(t *testing.T) {
 			FullyAuthenticated:  false,
 		},
 	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND event_type = 'mfa.challenge'
+			  AND outcome = 'failure'
+			  AND subject_type = 'user'
+			  AND subject_id = $2
+			  AND metadata = '{
+			      "challenge_method": "totp",
+			      "failure_reason": "invalid_or_replayed_code"
+			  }'::jsonb
+		`,
+		2,
+		registration.TenantID,
+		registration.UserID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND event_type = 'mfa.recovery_code'
+			  AND outcome = 'failure'
+			  AND subject_type = 'user'
+			  AND subject_id = $2
+			  AND metadata = '{
+			      "failure_reason": "invalid_or_reused_code"
+			  }'::jsonb
+		`,
+		1,
+		registration.TenantID,
+		registration.UserID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND event_type = 'mfa.enrollment_confirmed'
+			  AND outcome = 'failure'
+			  AND subject_id = $2
+			  AND metadata = '{"failure_reason":"enrollment_expired"}'::jsonb
+		`,
+		1,
+		registration.TenantID,
+		registration.UserID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND event_type = 'mfa.enrollment_confirmed'
+			  AND outcome = 'failure'
+			  AND subject_id = $2
+			  AND metadata = '{"failure_reason":"invalid_code"}'::jsonb
+		`,
+		1,
+		registration.TenantID,
+		registration.UserID,
+	)
 }
 
 func newIntegrationMFASecretCipher(
