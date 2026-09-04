@@ -370,6 +370,82 @@ func TestLoginFailureSemantics(t *testing.T) {
 			ClientIP: "127.0.0.1",
 		},
 	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE event_type = 'auth.login'
+			  AND outcome = 'failure'
+			  AND subject_type = 'user'
+			  AND subject_id = $1
+			  AND metadata = '{
+			      "authentication_method": "password",
+			      "failure_reason": "invalid_credentials"
+			  }'::jsonb
+		`,
+		2,
+		registration.UserID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE event_type = 'auth.login'
+			  AND outcome = 'failure'
+			  AND subject_id IS NULL
+			  AND metadata = '{
+			      "authentication_method": "password",
+			      "failure_reason": "invalid_credentials"
+			  }'::jsonb
+		`,
+		1,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE event_type = 'auth.login'
+			  AND outcome = 'denied'
+			  AND subject_id = $1
+			  AND metadata = '{
+			      "authentication_method": "password",
+			      "failure_reason": "email_verification_required"
+			  }'::jsonb
+		`,
+		1,
+		registration.UserID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE event_type = 'auth.login'
+			  AND outcome = 'denied'
+			  AND subject_id = $1
+			  AND metadata = '{
+			      "authentication_method": "password",
+			      "failure_reason": "inactive_account"
+			  }'::jsonb
+		`,
+		1,
+		registration.UserID,
+	)
 }
 
 func newAuthenticationTestService(

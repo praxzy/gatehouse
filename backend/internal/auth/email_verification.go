@@ -11,6 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 )
 
 const (
@@ -85,8 +87,26 @@ func (service *Service) VerifyEmail(
 		return VerifyEmailResult{},
 			ErrInvalidEmailVerificationToken
 	}
+
+	transaction, err := service.pool.BeginTx(
+		ctx,
+		pgx.TxOptions{},
+	)
+	if err != nil {
+		return VerifyEmailResult{}, fmt.Errorf(
+			"begin email verification transaction: %w",
+			err,
+		)
+	}
+
+	defer func() {
+		_ = transaction.Rollback(context.Background())
+	}()
+
+	queries := service.queries.WithTx(transaction)
+
 	verifiedUser, err :=
-		service.queries.VerifyEmailByTokenHash(
+		queries.VerifyEmailByTokenHash(
 			ctx,
 			tokenHash,
 		)
@@ -104,6 +124,34 @@ func (service *Service) VerifyEmail(
 	if !verifiedUser.EmailVerifiedAt.Valid {
 		return VerifyEmailResult{}, errors.New(
 			"verified email has no verification timestamp",
+		)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			ActorKind:   audit.ActorAnonymous,
+			Type:        audit.EventEmailVerification,
+			Outcome:     audit.OutcomeSuccess,
+			SubjectType: "user",
+			SubjectID:   verifiedUser.ID,
+			Metadata: audit.Metadata{
+				"verification_method": "email_link",
+			},
+		},
+	)
+	if err != nil {
+		return VerifyEmailResult{}, fmt.Errorf(
+			"audit email verification: %w",
+			err,
+		)
+	}
+
+	if err := transaction.Commit(ctx); err != nil {
+		return VerifyEmailResult{}, fmt.Errorf(
+			"commit email verification: %w",
+			err,
 		)
 	}
 

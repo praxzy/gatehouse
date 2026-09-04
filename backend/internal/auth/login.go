@@ -12,6 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 )
 
 var (
@@ -81,13 +83,22 @@ func (service *Service) Login(
 	}
 
 	if !decision.Allowed {
-		return LoginResult{}, &LoginRateLimitedError{
+		loginErr := &LoginRateLimitedError{
 			RetryAfter: decision.RetryAfter,
 		}
+
+		return LoginResult{}, service.rejectLoginAttempt(
+			ctx,
+			audit.OutcomeDenied,
+			"rate_limited",
+			pgtype.UUID{},
+			loginErr,
+		)
 	}
 
 	if !validEmail(email) {
 		return LoginResult{}, service.rejectUnknownCredentials(
+			ctx,
 			input.Password,
 		)
 	}
@@ -95,6 +106,7 @@ func (service *Service) Login(
 	login, err := service.queries.GetPasswordLoginByEmail(ctx, email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return LoginResult{}, service.rejectUnknownCredentials(
+			ctx,
 			input.Password,
 		)
 	}
@@ -117,13 +129,34 @@ func (service *Service) Login(
 		)
 	}
 
-	if !matches || login.Status != "active" {
-		return LoginResult{}, ErrInvalidCredentials
+	if !matches {
+		return LoginResult{}, service.rejectLoginAttempt(
+			ctx,
+			audit.OutcomeFailure,
+			"invalid_credentials",
+			login.UserID,
+			ErrInvalidCredentials,
+		)
+	}
+
+	if login.Status != "active" {
+		return LoginResult{}, service.rejectLoginAttempt(
+			ctx,
+			audit.OutcomeDenied,
+			"inactive_account",
+			login.UserID,
+			ErrInvalidCredentials,
+		)
 	}
 
 	if !login.EmailVerified {
-		return LoginResult{},
-			ErrEmailVerificationRequired
+		return LoginResult{}, service.rejectLoginAttempt(
+			ctx,
+			audit.OutcomeDenied,
+			"email_verification_required",
+			login.UserID,
+			ErrEmailVerificationRequired,
+		)
 	}
 
 	return LoginResult{
@@ -133,6 +166,7 @@ func (service *Service) Login(
 }
 
 func (service *Service) rejectUnknownCredentials(
+	ctx context.Context,
 	password string,
 ) error {
 	_, err := VerifyPassword(password, service.dummyPasswordHash)
@@ -140,11 +174,51 @@ func (service *Service) rejectUnknownCredentials(
 		return fmt.Errorf("verify dummy password: %w", err)
 	}
 
-	return ErrInvalidCredentials
+	return service.rejectLoginAttempt(
+		ctx,
+		audit.OutcomeFailure,
+		"invalid_credentials",
+		pgtype.UUID{},
+		ErrInvalidCredentials,
+	)
 }
 
 func accountRateLimitKey(email string) string {
 	digest := sha256.Sum256([]byte(email))
 
 	return "account:" + hex.EncodeToString(digest[:])
+}
+
+func (service *Service) rejectLoginAttempt(
+	ctx context.Context,
+	outcome audit.Outcome,
+	failureReason string,
+	subjectUserID pgtype.UUID,
+	loginErr error,
+) error {
+	event := audit.Event{
+		ActorKind: audit.ActorAnonymous,
+		Type:      audit.EventLogin,
+		Outcome:   outcome,
+		Metadata: audit.Metadata{
+			"authentication_method": "password",
+			"failure_reason":        failureReason,
+		},
+	}
+
+	if subjectUserID.Valid {
+		event.SubjectType = "user"
+		event.SubjectID = subjectUserID
+	}
+
+	_, err := service.auditWriter.Write(
+		ctx,
+		service.queries,
+		event,
+	)
+	if err != nil {
+		return fmt.Errorf("audit rejected login: %w", err)
+	}
+
+	return loginErr
 }

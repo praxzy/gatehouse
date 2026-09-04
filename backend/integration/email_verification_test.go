@@ -145,6 +145,25 @@ func TestEmailVerificationLifecycle(t *testing.T) {
 		registration.UserID,
 	)
 
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE event_type = 'auth.email_verification'
+			  AND outcome = 'success'
+			  AND actor_kind = 'anonymous'
+			  AND tenant_id IS NULL
+			  AND subject_type = 'user'
+			  AND subject_id = $1
+			  AND metadata = '{"verification_method":"email_link"}'::jsonb
+		`,
+		1,
+		registration.UserID,
+	)
+
 	_, err = service.VerifyEmail(
 		ctx,
 		delivery.Token,
