@@ -7,9 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
@@ -181,6 +183,34 @@ func (service *Service) InviteMember(
 	if !invitation.ExpiresAt.Valid {
 		return InviteMemberResult{}, errors.New(
 			"stored membership invitation has no expiry",
+		)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventInvitationCreated,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "invitation",
+			SubjectID:         invitation.ID,
+			Metadata: audit.Metadata{
+				"role_id": uuid.UUID(
+					invitation.RoleID.Bytes,
+				).String(),
+				"expires_in_seconds": membershipInvitationLifetimeSeconds,
+			},
+		},
+	)
+	if err != nil {
+		return InviteMemberResult{}, fmt.Errorf(
+			"audit membership invitation: %w",
+			err,
 		)
 	}
 
@@ -504,6 +534,32 @@ func (service *Service) AcceptMembershipInvitation(
 	if !acceptedInvitation.AcceptedAt.Valid {
 		return AcceptMembershipInvitationResult{}, errors.New(
 			"accepted membership invitation has no timestamp",
+		)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          invitation.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       userID,
+			ActorMembershipID: membership.ID,
+			Type:              audit.EventInvitationAccepted,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "invitation",
+			SubjectID:         invitation.ID,
+			Metadata: audit.Metadata{
+				"role_id": uuid.UUID(
+					invitation.RoleID.Bytes,
+				).String(),
+			},
+		},
+	)
+	if err != nil {
+		return AcceptMembershipInvitationResult{}, fmt.Errorf(
+			"audit invitation acceptance: %w",
+			err,
 		)
 	}
 

@@ -7,9 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
@@ -263,8 +265,29 @@ func (service *Service) UpdateMember(
 
 	resultingOwner := currentlyOwner
 	var replacementRole store.Role
+	previousRoleID := ""
 
 	if roleChanging {
+		currentRoles, err := queries.ListRolesForMembership(
+			ctx,
+			store.ListRolesForMembershipParams{
+				TenantID:     session.TenantID,
+				MembershipID: target.ID,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"load current member roles: %w",
+				err,
+			)
+		}
+
+		if len(currentRoles) == 1 {
+			previousRoleID = uuid.UUID(
+				currentRoles[0].ID.Bytes,
+			).String()
+		}
+
 		replacementRole, err = queries.GetRoleByID(
 			ctx,
 			store.GetRoleByIDParams{
@@ -359,8 +382,10 @@ func (service *Service) UpdateMember(
 		}
 	}
 
+	var revokedSessionCount int64
+
 	if status == "disabled" {
-		_, err = queries.RevokeSessionsForMembership(
+		revokedSessionCount, err = queries.RevokeSessionsForMembership(
 			ctx,
 			store.RevokeSessionsForMembershipParams{
 				TenantID:     session.TenantID,
@@ -370,6 +395,70 @@ func (service *Service) UpdateMember(
 		if err != nil {
 			return fmt.Errorf(
 				"revoke disabled member sessions: %w",
+				err,
+			)
+		}
+	}
+
+	if roleChanging {
+		metadata := audit.Metadata{
+			"new_role_id": uuid.UUID(
+				replacementRole.ID.Bytes,
+			).String(),
+		}
+
+		if previousRoleID != "" {
+			metadata["previous_role_id"] = previousRoleID
+		}
+
+		_, err = service.auditWriter.Write(
+			ctx,
+			queries,
+			audit.Event{
+				TenantID:          session.TenantID,
+				ActorKind:         audit.ActorUser,
+				ActorUserID:       session.UserID,
+				ActorMembershipID: session.MembershipID,
+				SessionID:         session.SessionID,
+				Type:              audit.EventMemberRoleChanged,
+				Outcome:           audit.OutcomeSuccess,
+				SubjectType:       "membership",
+				SubjectID:         target.ID,
+				Metadata:          metadata,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"audit member role change: %w",
+				err,
+			)
+		}
+	}
+
+	if status != "" {
+		_, err = service.auditWriter.Write(
+			ctx,
+			queries,
+			audit.Event{
+				TenantID:          session.TenantID,
+				ActorKind:         audit.ActorUser,
+				ActorUserID:       session.UserID,
+				ActorMembershipID: session.MembershipID,
+				SessionID:         session.SessionID,
+				Type:              audit.EventMemberStatusChanged,
+				Outcome:           audit.OutcomeSuccess,
+				SubjectType:       "membership",
+				SubjectID:         target.ID,
+				Metadata: audit.Metadata{
+					"previous_status":       target.Status,
+					"new_status":            status,
+					"revoked_session_count": revokedSessionCount,
+				},
+			},
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"audit member status change: %w",
 				err,
 			)
 		}

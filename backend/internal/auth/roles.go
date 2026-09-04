@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
@@ -221,6 +222,32 @@ func (service *Service) CreateRole(
 		return RoleSummary{}, err
 	}
 
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventRoleCreated,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "role",
+			SubjectID:         role.ID,
+			Metadata: audit.Metadata{
+				"role_name":        role.Name,
+				"permission_count": len(permissions),
+			},
+		},
+	)
+	if err != nil {
+		return RoleSummary{}, fmt.Errorf(
+			"audit role creation: %w",
+			err,
+		)
+	}
+
 	if err := transaction.Commit(ctx); err != nil {
 		return RoleSummary{}, fmt.Errorf(
 			"commit role creation: %w",
@@ -308,6 +335,20 @@ func (service *Service) UpdateRole(
 		)
 	}
 
+	previousPermissions, err := queries.ListRolePermissions(
+		ctx,
+		store.ListRolePermissionsParams{
+			TenantID: session.TenantID,
+			RoleID:   input.RoleID,
+		},
+	)
+	if err != nil {
+		return RoleSummary{}, fmt.Errorf(
+			"load existing role permissions: %w",
+			err,
+		)
+	}
+
 	permissions, err := validateRolePermissions(
 		ctx,
 		queries,
@@ -359,6 +400,33 @@ func (service *Service) UpdateRole(
 		permissions,
 	); err != nil {
 		return RoleSummary{}, err
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventRoleUpdated,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "role",
+			SubjectID:         role.ID,
+			Metadata: audit.Metadata{
+				"role_name":                 role.Name,
+				"previous_permission_count": len(previousPermissions),
+				"permission_count":          len(permissions),
+			},
+		},
+	)
+	if err != nil {
+		return RoleSummary{}, fmt.Errorf(
+			"audit role update: %w",
+			err,
+		)
 	}
 
 	if err := transaction.Commit(ctx); err != nil {
