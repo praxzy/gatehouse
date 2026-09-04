@@ -329,7 +329,24 @@ func (service *Service) RevokeSession(
 		return ErrInvalidRevocationReason
 	}
 
-	_, err := service.queries.RevokeSessionByID(
+	transaction, err := service.pool.BeginTx(
+		ctx,
+		pgx.TxOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"begin session revocation transaction: %w",
+			err,
+		)
+	}
+
+	defer func() {
+		_ = transaction.Rollback(context.Background())
+	}()
+
+	queries := service.queries.WithTx(transaction)
+
+	revokedSessions, err := queries.RevokeSessionByID(
 		ctx,
 		store.RevokeSessionByIDParams{
 			RevocationReason: &reason,
@@ -339,6 +356,42 @@ func (service *Service) RevokeSession(
 	)
 	if err != nil {
 		return fmt.Errorf("revoke session: %w", err)
+	}
+
+	if revokedSessions == 0 {
+		return nil
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventSessionRevoked,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "session",
+			SubjectID:         session.SessionID,
+			Metadata: audit.Metadata{
+				"revocation_reason": reason,
+			},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"audit session revocation: %w",
+			err,
+		)
+	}
+
+	if err := transaction.Commit(ctx); err != nil {
+		return fmt.Errorf(
+			"commit session revocation: %w",
+			err,
+		)
 	}
 
 	return nil

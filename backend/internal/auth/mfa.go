@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
@@ -83,7 +84,24 @@ func (service *Service) BeginTOTPEnrollment(
 		return TOTPEnrollmentResult{}, err
 	}
 
-	credential, err := service.queries.UpsertPendingTOTPCredential(
+	transaction, err := service.pool.BeginTx(
+		ctx,
+		pgx.TxOptions{},
+	)
+	if err != nil {
+		return TOTPEnrollmentResult{}, fmt.Errorf(
+			"begin MFA enrollment transaction: %w",
+			err,
+		)
+	}
+
+	defer func() {
+		_ = transaction.Rollback(context.Background())
+	}()
+
+	queries := service.queries.WithTx(transaction)
+
+	credential, err := queries.UpsertPendingTOTPCredential(
 		ctx,
 		store.UpsertPendingTOTPCredentialParams{
 			UserID:           session.UserID,
@@ -105,6 +123,38 @@ func (service *Service) BeginTOTPEnrollment(
 	if !credential.EnrollmentExpiresAt.Valid {
 		return TOTPEnrollmentResult{}, errors.New(
 			"pending MFA enrollment has no expiry",
+		)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventMFAEnrollmentStarted,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "user",
+			SubjectID:         session.UserID,
+			Metadata: audit.Metadata{
+				"expires_in_seconds": int(totpEnrollmentLifetime / time.Second),
+			},
+		},
+	)
+	if err != nil {
+		return TOTPEnrollmentResult{}, fmt.Errorf(
+			"audit MFA enrollment start: %w",
+			err,
+		)
+	}
+
+	if err := transaction.Commit(ctx); err != nil {
+		return TOTPEnrollmentResult{}, fmt.Errorf(
+			"commit MFA enrollment start: %w",
+			err,
 		)
 	}
 
@@ -227,6 +277,31 @@ func (service *Service) ConfirmTOTPEnrollment(
 		return MFAEnrollmentConfirmation{}, err
 	}
 
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventMFAEnrollmentConfirmed,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "user",
+			SubjectID:         session.UserID,
+			Metadata: audit.Metadata{
+				"recovery_code_count": len(recoveryCodes),
+			},
+		},
+	)
+	if err != nil {
+		return MFAEnrollmentConfirmation{}, fmt.Errorf(
+			"audit MFA enrollment confirmation: %w",
+			err,
+		)
+	}
+
 	if err := transaction.Commit(ctx); err != nil {
 		return MFAEnrollmentConfirmation{}, fmt.Errorf(
 			"commit MFA confirmation: %w",
@@ -326,6 +401,31 @@ func (service *Service) CompleteMFAWithTOTP(
 		return MFAChallengeResult{}, err
 	}
 
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventMFAChallenge,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "user",
+			SubjectID:         session.UserID,
+			Metadata: audit.Metadata{
+				"challenge_method": "totp",
+			},
+		},
+	)
+	if err != nil {
+		return MFAChallengeResult{}, fmt.Errorf(
+			"audit TOTP challenge: %w",
+			err,
+		)
+	}
+
 	if err := transaction.Commit(ctx); err != nil {
 		return MFAChallengeResult{}, fmt.Errorf(
 			"commit TOTP challenge: %w",
@@ -408,6 +508,28 @@ func (service *Service) CompleteMFAWithRecoveryCode(
 	)
 	if err != nil {
 		return MFAChallengeResult{}, err
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventMFARecoveryCode,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "user",
+			SubjectID:         session.UserID,
+		},
+	)
+	if err != nil {
+		return MFAChallengeResult{}, fmt.Errorf(
+			"audit recovery-code challenge: %w",
+			err,
+		)
 	}
 
 	if err := transaction.Commit(ctx); err != nil {
@@ -499,6 +621,57 @@ func (service *Service) createMFASession(
 	if !session.ExpiresAt.Valid {
 		return SessionGrant{}, errors.New(
 			"created MFA session has no expiration",
+		)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          currentSession.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       currentSession.UserID,
+			ActorMembershipID: currentSession.MembershipID,
+			SessionID:         currentSession.SessionID,
+			Type:              audit.EventSessionRevoked,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "session",
+			SubjectID:         currentSession.SessionID,
+			Metadata: audit.Metadata{
+				"revocation_reason": "rotated_after_mfa",
+			},
+		},
+	)
+	if err != nil {
+		return SessionGrant{}, fmt.Errorf(
+			"audit MFA session revocation: %w",
+			err,
+		)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			SessionID:         session.ID,
+			Type:              audit.EventSessionCreated,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "session",
+			SubjectID:         session.ID,
+			Metadata: audit.Metadata{
+				"authentication_level":     "mfa",
+				"rotated_previous_session": true,
+			},
+		},
+	)
+	if err != nil {
+		return SessionGrant{}, fmt.Errorf(
+			"audit MFA session creation: %w",
+			err,
 		)
 	}
 
