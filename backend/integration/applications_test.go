@@ -355,6 +355,30 @@ func TestOIDCApplicationRegistrationLifecycle(
 					policy.AllowedRoles,
 				)
 			}
+
+			assertDatabaseCount(
+				t,
+				ctx,
+				pool,
+				`
+					SELECT count(*)
+					FROM audit_events
+					WHERE tenant_id = $1
+					  AND application_id = $2
+					  AND event_type = 'application.access_policy_updated'
+					  AND outcome = 'success'
+					  AND subject_type = 'application'
+					  AND subject_id = $2
+					  AND metadata = '{
+					      "previous_access_mode": "all_active_members",
+					      "new_access_mode": "allowed_roles",
+					      "allowed_role_count": 1
+					  }'::jsonb
+				`,
+				1,
+				registration.TenantID,
+				created.Application.ApplicationID,
+			)
 		},
 	)
 

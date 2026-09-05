@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
@@ -46,6 +47,23 @@ func (service *Service) UpdateApplicationAccessPolicy(
 	}()
 
 	queries := service.queries.WithTx(transaction)
+
+	currentApplication, err := queries.GetApplicationByID(
+		ctx,
+		store.GetApplicationByIDParams{
+			TenantID:      session.TenantID,
+			ApplicationID: input.ApplicationID,
+		},
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ApplicationAccessPolicy{}, ErrApplicationNotFound
+	}
+	if err != nil {
+		return ApplicationAccessPolicy{}, fmt.Errorf(
+			"load application before policy update: %w",
+			err,
+		)
+	}
 
 	updated, err := queries.UpdateApplicationAccessMode(
 		ctx,
@@ -102,6 +120,34 @@ func (service *Service) UpdateApplicationAccessPolicy(
 				err,
 			)
 		}
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:          session.TenantID,
+			ActorKind:         audit.ActorUser,
+			ActorUserID:       session.UserID,
+			ActorMembershipID: session.MembershipID,
+			ApplicationID:     input.ApplicationID,
+			SessionID:         session.SessionID,
+			Type:              audit.EventApplicationPolicyUpdated,
+			Outcome:           audit.OutcomeSuccess,
+			SubjectType:       "application",
+			SubjectID:         input.ApplicationID,
+			Metadata: audit.Metadata{
+				"previous_access_mode": currentApplication.AccessMode,
+				"new_access_mode":      updated.AccessMode,
+				"allowed_role_count":   len(allowedRoles),
+			},
+		},
+	)
+	if err != nil {
+		return ApplicationAccessPolicy{}, fmt.Errorf(
+			"audit application access policy update: %w",
+			err,
+		)
 	}
 
 	if err := transaction.Commit(ctx); err != nil {
