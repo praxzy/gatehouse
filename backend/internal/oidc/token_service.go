@@ -102,6 +102,25 @@ func (service *TokenService) ExchangeAuthorizationCode(
 
 	request, err := ParseTokenRequest(values)
 	if err != nil {
+		failureReason := "invalid_request"
+
+		switch {
+		case errors.Is(err, ErrUnsupportedTokenGrantType):
+			failureReason = "unsupported_grant_type"
+
+		case errors.Is(err, ErrInvalidPKCEVerifier):
+			failureReason = "invalid_pkce_verifier"
+		}
+
+		if auditErr := service.auditTokenExchangeFailure(
+			ctx,
+			nil,
+			"unvalidated",
+			failureReason,
+		); auditErr != nil {
+			return TokenResult{}, auditErr
+		}
+
 		return TokenResult{}, err
 	}
 
@@ -111,12 +130,32 @@ func (service *TokenService) ExchangeAuthorizationCode(
 		authentication,
 	)
 	if err != nil {
+		if errors.Is(err, ErrInvalidTokenClient) {
+			if auditErr := service.auditTokenExchangeFailure(
+				ctx,
+				nil,
+				request.GrantType,
+				"invalid_client",
+			); auditErr != nil {
+				return TokenResult{}, auditErr
+			}
+		}
+
 		return TokenResult{}, err
 	}
 
 	codeChallenge, err :=
 		deriveS256CodeChallenge(request.CodeVerifier)
 	if err != nil {
+		if auditErr := service.auditTokenExchangeFailure(
+			ctx,
+			&client,
+			request.GrantType,
+			"invalid_pkce_verifier",
+		); auditErr != nil {
+			return TokenResult{}, auditErr
+		}
+
 		return TokenResult{}, ErrInvalidAuthorizationGrant
 	}
 
@@ -160,6 +199,22 @@ func (service *TokenService) ExchangeAuthorizationCode(
 		},
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
+		if rollbackErr := transaction.Rollback(ctx); rollbackErr != nil {
+			return TokenResult{}, fmt.Errorf(
+				"roll back rejected token exchange: %w",
+				rollbackErr,
+			)
+		}
+
+		if auditErr := service.auditTokenExchangeFailure(
+			ctx,
+			&client,
+			request.GrantType,
+			"invalid_grant",
+		); auditErr != nil {
+			return TokenResult{}, auditErr
+		}
+
 		return TokenResult{}, ErrInvalidAuthorizationGrant
 	}
 	if err != nil {
@@ -219,6 +274,31 @@ func (service *TokenService) ExchangeAuthorizationCode(
 			errors.New(
 				"issued access token has invalid expiration",
 			)
+	}
+
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:      redeemed.TenantID,
+			ActorKind:     audit.ActorApplication,
+			ApplicationID: redeemed.ApplicationID,
+			SessionID:     redeemed.SessionID,
+			Type:          audit.EventTokenExchange,
+			Outcome:       audit.OutcomeSuccess,
+			SubjectType:   "user",
+			SubjectID:     redeemed.UserID,
+			Metadata: audit.Metadata{
+				"grant_type":  request.GrantType,
+				"scope_count": len(redeemed.GrantedScope),
+			},
+		},
+	)
+	if err != nil {
+		return TokenResult{}, fmt.Errorf(
+			"audit successful token exchange: %w",
+			err,
+		)
 	}
 
 	if err := transaction.Commit(ctx); err != nil {
@@ -314,4 +394,43 @@ func (service *TokenService) authenticateTokenClient(
 	}
 
 	return client, nil
+}
+
+func (service *TokenService) auditTokenExchangeFailure(
+	ctx context.Context,
+	client *store.GetActiveTokenClientRow,
+	grantType string,
+	failureReason string,
+) error {
+	event := audit.Event{
+		ActorKind: audit.ActorAnonymous,
+		Type:      audit.EventTokenExchange,
+		Outcome:   audit.OutcomeFailure,
+		Metadata: audit.Metadata{
+			"grant_type":     grantType,
+			"failure_reason": failureReason,
+		},
+	}
+
+	if client != nil {
+		event.TenantID = client.TenantID
+		event.ActorKind = audit.ActorApplication
+		event.ApplicationID = client.ApplicationID
+		event.SubjectType = "application"
+		event.SubjectID = client.ApplicationID
+	}
+
+	_, err := service.auditWriter.Write(
+		ctx,
+		service.queries,
+		event,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"write failed token exchange audit: %w",
+			err,
+		)
+	}
+
+	return nil
 }

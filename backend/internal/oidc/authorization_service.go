@@ -41,6 +41,7 @@ var (
 )
 
 type AuthorizationService struct {
+	pool        *pgxpool.Pool
 	queries     *store.Queries
 	auditWriter audit.EventWriter
 	now         func() time.Time
@@ -85,6 +86,7 @@ func NewAuthorizationService(
 	}
 
 	return &AuthorizationService{
+		pool:        pool,
 		queries:     store.New(pool),
 		auditWriter: auditWriter,
 		now:         time.Now,
@@ -96,6 +98,7 @@ func (service *AuthorizationService) BeginAuthorization(
 	values url.Values,
 ) (PendingAuthorization, error) {
 	if service == nil ||
+		service.pool == nil ||
 		service.queries == nil ||
 		service.now == nil ||
 		service.auditWriter == nil {
@@ -105,6 +108,14 @@ func (service *AuthorizationService) BeginAuthorization(
 
 	target, err := ParseAuthorizationTarget(values)
 	if err != nil {
+		if auditErr := service.auditAuthorizationRequestFailure(
+			ctx,
+			nil,
+			"invalid_target",
+		); auditErr != nil {
+			return PendingAuthorization{}, auditErr
+		}
+
 		return PendingAuthorization{},
 			ErrAuthorizationClientUnavailable
 	}
@@ -119,6 +130,14 @@ func (service *AuthorizationService) BeginAuthorization(
 		)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			if auditErr := service.auditAuthorizationRequestFailure(
+				ctx,
+				nil,
+				"client_unavailable",
+			); auditErr != nil {
+				return PendingAuthorization{}, auditErr
+			}
+
 			return PendingAuthorization{},
 				ErrAuthorizationClientUnavailable
 		}
@@ -129,6 +148,27 @@ func (service *AuthorizationService) BeginAuthorization(
 
 	request, err := ParseAuthorizationRequest(values)
 	if err != nil {
+		failureReason := "invalid_request"
+
+		switch {
+		case errors.Is(err, ErrUnsupportedResponseType):
+			failureReason = "unsupported_response_type"
+
+		case errors.Is(err, ErrInvalidAuthorizationScope):
+			failureReason = "invalid_scope"
+
+		case errors.Is(err, ErrPKCERequired):
+			failureReason = "pkce_required"
+		}
+
+		if auditErr := service.auditAuthorizationRequestFailure(
+			ctx,
+			&application,
+			failureReason,
+		); auditErr != nil {
+			return PendingAuthorization{}, auditErr
+		}
+
 		return PendingAuthorization{},
 			newAuthorizationProtocolError(
 				err,
@@ -140,8 +180,25 @@ func (service *AuthorizationService) BeginAuthorization(
 	now := service.now().UTC()
 	stateHash := sha256.Sum256([]byte(request.State))
 
-	transaction, err :=
-		service.queries.CreateAuthorizationTransaction(
+	databaseTransaction, err := service.pool.BeginTx(
+		ctx,
+		pgx.TxOptions{},
+	)
+	if err != nil {
+		return PendingAuthorization{}, fmt.Errorf(
+			"begin authorization request transaction: %w",
+			err,
+		)
+	}
+
+	defer func() {
+		_ = databaseTransaction.Rollback(context.Background())
+	}()
+
+	queries := service.queries.WithTx(databaseTransaction)
+
+	storedTransaction, err :=
+		queries.CreateAuthorizationTransaction(
 			ctx,
 			store.CreateAuthorizationTransactionParams{
 				TenantID:       application.TenantID,
@@ -163,20 +220,88 @@ func (service *AuthorizationService) BeginAuthorization(
 			fmt.Errorf("create authorization transaction: %w", err)
 	}
 
+	_, err = service.auditWriter.Write(
+		ctx,
+		queries,
+		audit.Event{
+			TenantID:      storedTransaction.TenantID,
+			ActorKind:     audit.ActorAnonymous,
+			ApplicationID: storedTransaction.ApplicationID,
+			Type:          audit.EventAuthorizationRequest,
+			Outcome:       audit.OutcomeSuccess,
+			SubjectType:   "application",
+			SubjectID:     storedTransaction.ApplicationID,
+			Metadata: audit.Metadata{
+				"response_type": request.ResponseType,
+				"scope_count":   len(request.Scope),
+				"has_nonce":     request.Nonce != "",
+			},
+		},
+	)
+	if err != nil {
+		return PendingAuthorization{}, fmt.Errorf(
+			"audit authorization request: %w",
+			err,
+		)
+	}
+
+	if err := databaseTransaction.Commit(ctx); err != nil {
+		return PendingAuthorization{}, fmt.Errorf(
+			"commit authorization request: %w",
+			err,
+		)
+	}
+
 	return PendingAuthorization{
-		TransactionID:   transaction.ID,
-		TenantID:        transaction.TenantID,
-		ApplicationID:   transaction.ApplicationID,
+		TransactionID:   storedTransaction.ID,
+		TenantID:        storedTransaction.TenantID,
+		ApplicationID:   storedTransaction.ApplicationID,
 		ApplicationName: application.Name,
-		ClientID:        transaction.ClientID,
-		RedirectURI:     transaction.RedirectUri,
+		ClientID:        storedTransaction.ClientID,
+		RedirectURI:     storedTransaction.RedirectUri,
 		AccessMode:      application.AccessMode,
-		RequestedScope:  transaction.RequestedScope,
-		Nonce:           transaction.Nonce,
-		CodeChallenge:   transaction.CodeChallenge,
-		ExpiresAt:       transaction.ExpiresAt.Time,
+		RequestedScope:  storedTransaction.RequestedScope,
+		Nonce:           storedTransaction.Nonce,
+		CodeChallenge:   storedTransaction.CodeChallenge,
+		ExpiresAt:       storedTransaction.ExpiresAt.Time,
 		TenantSlug:      application.TenantSlug,
 	}, nil
+}
+
+func (service *AuthorizationService) auditAuthorizationRequestFailure(
+	ctx context.Context,
+	application *store.GetActiveApplicationForAuthorizationRow,
+	failureReason string,
+) error {
+	event := audit.Event{
+		ActorKind: audit.ActorAnonymous,
+		Type:      audit.EventAuthorizationRequest,
+		Outcome:   audit.OutcomeFailure,
+		Metadata: audit.Metadata{
+			"failure_reason": failureReason,
+		},
+	}
+
+	if application != nil {
+		event.TenantID = application.TenantID
+		event.ApplicationID = application.ApplicationID
+		event.SubjectType = "application"
+		event.SubjectID = application.ApplicationID
+	}
+
+	_, err := service.auditWriter.Write(
+		ctx,
+		service.queries,
+		event,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"write failed authorization request audit: %w",
+			err,
+		)
+	}
+
+	return nil
 }
 
 func (service *AuthorizationService) LoadAuthorization(

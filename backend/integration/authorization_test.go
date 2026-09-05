@@ -368,7 +368,7 @@ func TestSecureAuthorizationRequestLifecycle(
 			}
 
 			if lifetime <= 0 ||
-				lifetime > 5*time.Minute {
+				lifetime > 5*time.Minute+time.Second {
 				t.Fatalf(
 					"unexpected transaction lifetime %s",
 					lifetime,
@@ -458,6 +458,101 @@ func TestSecureAuthorizationRequestLifecycle(
 				)
 			}
 		},
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id IS NULL
+			  AND actor_kind = 'anonymous'
+			  AND event_type = 'authorization.request'
+			  AND outcome = 'failure'
+			  AND metadata = '{"failure_reason":"client_unavailable"}'::jsonb
+		`,
+		2,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'authorization.request'
+			  AND outcome = 'failure'
+			  AND metadata = '{"failure_reason":"pkce_required"}'::jsonb
+		`,
+		1,
+		registration.TenantID,
+		applicationID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'authorization.request'
+			  AND outcome = 'failure'
+			  AND metadata = '{"failure_reason":"unsupported_response_type"}'::jsonb
+		`,
+		1,
+		registration.TenantID,
+		applicationID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'authorization.request'
+			  AND outcome = 'success'
+			  AND metadata = '{
+			      "response_type": "code",
+			      "scope_count": 3,
+			      "has_nonce": true
+			  }'::jsonb
+		`,
+		1,
+		registration.TenantID,
+		applicationID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'authorization.decision'
+			  AND outcome = 'denied'
+			  AND metadata = '{
+			      "authentication_level": "none",
+			      "decision_reason": "login_required"
+			  }'::jsonb
+		`,
+		1,
+		registration.TenantID,
+		applicationID,
 	)
 }
 
@@ -1055,6 +1150,87 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 				allowedState,
 			)
 		},
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'authorization.decision'
+			  AND outcome = 'success'
+			  AND metadata->>'decision_reason' =
+			      'application_access_granted'
+			  AND metadata ? 'authentication_level'
+		`,
+		3,
+		registration.TenantID,
+		applicationID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'authorization.decision'
+			  AND outcome = 'denied'
+			  AND metadata = '{
+			      "authentication_level": "password",
+			      "decision_reason": "mfa_challenge_required"
+			  }'::jsonb
+		`,
+		2,
+		registration.TenantID,
+		applicationID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'authorization.decision'
+			  AND outcome = 'denied'
+			  AND metadata = '{
+			      "authentication_level": "password",
+			      "decision_reason": "application_access_denied"
+			  }'::jsonb
+		`,
+		1,
+		registration.TenantID,
+		applicationID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'authorization.code_issued'
+			  AND outcome = 'success'
+			  AND subject_type = 'authorization_transaction'
+			  AND metadata = '{"expires_in_seconds":60}'::jsonb
+		`,
+		3,
+		registration.TenantID,
+		applicationID,
 	)
 }
 

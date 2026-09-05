@@ -674,6 +674,68 @@ func TestAuthorizationCodeTokenExchange(
 			)
 		}
 	})
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND event_type = 'token.exchange'
+			  AND outcome = 'success'
+			  AND subject_type = 'user'
+			  AND subject_id = $3
+			  AND metadata = '{
+			      "grant_type": "authorization_code",
+			      "scope_count": 3
+			  }'::jsonb
+		`,
+		6,
+		registration.TenantID,
+		applicationID,
+		registration.UserID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND event_type = 'token.exchange'
+			  AND outcome = 'failure'
+			  AND metadata = '{
+			      "grant_type": "authorization_code",
+			      "failure_reason": "invalid_grant"
+			  }'::jsonb
+		`,
+		12,
+		registration.TenantID,
+	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id IS NULL
+			  AND actor_kind = 'anonymous'
+			  AND event_type = 'token.exchange'
+			  AND outcome = 'failure'
+			  AND metadata = '{
+			      "grant_type": "authorization_code",
+			      "failure_reason": "invalid_client"
+			  }'::jsonb
+		`,
+		1,
+	)
 }
 
 func issueTokenTestAuthorizationCode(
