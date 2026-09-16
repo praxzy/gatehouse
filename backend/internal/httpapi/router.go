@@ -138,6 +138,13 @@ func NewRouter(dependencies Dependencies) http.Handler {
 				handler.updateRole,
 			)
 
+			router.With(
+				requirePermission(auth.PermissionAuditRead),
+			).Get(
+				"/api/v1/audit-events",
+				handler.listAuditEvents,
+			)
+
 			if dependencies.Applications != nil {
 				router.With(
 					requirePermission(

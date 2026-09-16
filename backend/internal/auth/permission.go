@@ -8,6 +8,7 @@ const (
 	PermissionRoleManage        = "role.manage"
 	PermissionApplicationRead   = "application.read"
 	PermissionApplicationManage = "application.manage"
+	PermissionAuditRead         = "audit.read"
 )
 
 func (session SessionContext) HasPermission(

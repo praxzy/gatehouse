@@ -2,13 +2,20 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"net/netip"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
+	"github.com/praxzy/gatehouse/backend/internal/httpapi"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
@@ -266,6 +273,263 @@ func TestRegistrationAndSessionAuditLifecycle(t *testing.T) {
 			}
 		},
 	)
+}
+
+func TestTenantAuditEventReadLifecycle(t *testing.T) {
+	ctx := context.Background()
+	authentication, pool := newAuthenticationTestService(t, ctx)
+
+	owner, err := authentication.Register(
+		ctx,
+		auth.RegisterInput{
+			TenantName:  "Audit Reader Company",
+			TenantSlug:  "audit-reader-company",
+			Email:       "owner@audit-reader.test",
+			DisplayName: "Audit Reader",
+			Password:    "correct horse battery staple",
+		},
+	)
+	if err != nil {
+		t.Fatalf("register audit reader: %v", err)
+	}
+
+	markTestEmailVerified(t, ctx, pool, owner.UserID)
+
+	router := httpapi.NewRouter(httpapi.Dependencies{
+		Authentication: authentication,
+		SessionCookie:  httpapi.NewSessionCookie(true),
+	})
+
+	ownerCookie := loginLifecycleUser(
+		t,
+		router,
+		"audit-reader-company",
+		"owner@audit-reader.test",
+		"correct horse battery staple",
+	)
+
+	_, err = authentication.Register(
+		ctx,
+		auth.RegisterInput{
+			TenantName:  "Foreign Audit Company",
+			TenantSlug:  "foreign-audit-company",
+			Email:       "owner@foreign-audit.test",
+			DisplayName: "Foreign Owner",
+			Password:    "correct horse battery staple",
+		},
+	)
+	if err != nil {
+		t.Fatalf("register foreign tenant: %v", err)
+	}
+
+	firstPage := requestAuditEvents(
+		t,
+		router,
+		"/api/v1/audit-events?page_size=2",
+		ownerCookie,
+		http.StatusOK,
+	)
+
+	if len(firstPage.Events) != 2 {
+		t.Fatalf(
+			"expected 2 events on first page, got %d",
+			len(firstPage.Events),
+		)
+	}
+	if firstPage.NextCursor == "" {
+		t.Fatal("expected next-page cursor")
+	}
+
+	secondPage := requestAuditEvents(
+		t,
+		router,
+		"/api/v1/audit-events?"+url.Values{
+			"page_size": {"2"},
+			"cursor":    {firstPage.NextCursor},
+		}.Encode(),
+		ownerCookie,
+		http.StatusOK,
+	)
+
+	if len(secondPage.Events) != 1 {
+		t.Fatalf(
+			"expected 1 event on second page, got %d",
+			len(secondPage.Events),
+		)
+	}
+	if secondPage.NextCursor != "" {
+		t.Fatal("did not expect another cursor")
+	}
+
+	seen := make(map[string]struct{})
+	for _, event := range append(
+		firstPage.Events,
+		secondPage.Events...,
+	) {
+		if _, exists := seen[event.EventID]; exists {
+			t.Fatalf(
+				"event %s appeared on multiple pages",
+				event.EventID,
+			)
+		}
+		seen[event.EventID] = struct{}{}
+
+		if event.ActorEmail == "owner@foreign-audit.test" {
+			t.Fatal("foreign tenant audit event was exposed")
+		}
+	}
+
+	loginEvents := requestAuditEvents(
+		t,
+		router,
+		"/api/v1/audit-events?"+url.Values{
+			"event_type": {"auth.login"},
+			"outcome":    {"success"},
+		}.Encode(),
+		ownerCookie,
+		http.StatusOK,
+	)
+
+	if len(loginEvents.Events) != 1 ||
+		loginEvents.Events[0].EventType != "auth.login" ||
+		loginEvents.Events[0].Outcome != "success" {
+		t.Fatalf(
+			"unexpected filtered events: %+v",
+			loginEvents.Events,
+		)
+	}
+
+	actorEvents := requestAuditEvents(
+		t,
+		router,
+		"/api/v1/audit-events?"+url.Values{
+			"actor_user_id": {
+				uuid.UUID(owner.UserID.Bytes).String(),
+			},
+		}.Encode(),
+		ownerCookie,
+		http.StatusOK,
+	)
+
+	if len(actorEvents.Events) != 3 {
+		t.Fatalf(
+			"expected 3 events for owner, got %d",
+			len(actorEvents.Events),
+		)
+	}
+
+	applicationEvents := requestAuditEvents(
+		t,
+		router,
+		"/api/v1/audit-events?"+url.Values{
+			"application_id": {
+				"33333333-3333-4333-8333-333333333333",
+			},
+		}.Encode(),
+		ownerCookie,
+		http.StatusOK,
+	)
+
+	if len(applicationEvents.Events) != 0 {
+		t.Fatal("unexpected application-filtered events")
+	}
+
+	futureEvents := requestAuditEvents(
+		t,
+		router,
+		"/api/v1/audit-events?"+url.Values{
+			"from": {
+				time.Now().
+					UTC().
+					Add(time.Hour).
+					Format(time.RFC3339),
+			},
+		}.Encode(),
+		ownerCookie,
+		http.StatusOK,
+	)
+
+	if len(futureEvents.Events) != 0 {
+		t.Fatal("unexpected events beyond future time boundary")
+	}
+
+	requestAuditEvents(
+		t,
+		router,
+		"/api/v1/audit-events?outcome=unknown",
+		ownerCookie,
+		http.StatusBadRequest,
+	)
+
+	if _, err := pool.Exec(
+		ctx,
+		`
+			DELETE FROM role_permissions AS permission
+			USING roles AS role
+			WHERE permission.tenant_id = role.tenant_id
+			  AND permission.role_id = role.id
+			  AND role.tenant_id = $1
+			  AND role.role_key = 'owner'
+			  AND permission.permission = 'audit.read'
+		`,
+		owner.TenantID,
+	); err != nil {
+		t.Fatalf("remove audit permission: %v", err)
+	}
+
+	requestAuditEvents(
+		t,
+		router,
+		"/api/v1/audit-events",
+		ownerCookie,
+		http.StatusForbidden,
+	)
+}
+
+type auditEventListTestResponse struct {
+	Events []struct {
+		EventID    string `json:"event_id"`
+		ActorEmail string `json:"actor_email"`
+		EventType  string `json:"event_type"`
+		Outcome    string `json:"outcome"`
+	} `json:"events"`
+	NextCursor string `json:"next_cursor"`
+}
+
+func requestAuditEvents(
+	t *testing.T,
+	router http.Handler,
+	target string,
+	sessionCookie *http.Cookie,
+	expectedStatus int,
+) auditEventListTestResponse {
+	t.Helper()
+
+	response := performRequest(
+		t,
+		router,
+		http.MethodGet,
+		target,
+		nil,
+		sessionCookie,
+	)
+
+	body := requireResponseStatus(
+		t,
+		response,
+		expectedStatus,
+	)
+
+	if expectedStatus != http.StatusOK {
+		return auditEventListTestResponse{}
+	}
+
+	var result auditEventListTestResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode audit response: %v", err)
+	}
+
+	return result
 }
 
 type failingAuditWriter struct {

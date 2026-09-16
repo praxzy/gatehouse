@@ -113,6 +113,12 @@ type AuthenticationService interface {
 		session auth.SessionContext,
 		input auth.UpdateRoleInput,
 	) (auth.RoleSummary, error)
+
+	ListAuditEvents(
+		ctx context.Context,
+		session auth.SessionContext,
+		filter auth.AuditEventFilter,
+	) (auth.AuditEventListResult, error)
 }
 
 type authHandler struct {
