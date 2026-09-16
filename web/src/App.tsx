@@ -21,6 +21,12 @@ const AdminLayout = lazy(() =>
   })),
 )
 
+const AuditPage = lazy(() =>
+  import('./pages/AuditPage').then((module) => ({
+    default: module.AuditPage,
+  })),
+)
+
 const LoginPage = lazy(() =>
   import('./pages/LoginPage').then((module) => ({
     default: module.LoginPage,
@@ -112,6 +118,10 @@ function App() {
 
             <Route element={<RequirePermission permission={permissions.memberRead} />}>
               <Route path="/app/members" element={<MembersPage />} />
+            </Route>
+
+            <Route element={<RequirePermission permission={permissions.auditRead} />}>
+              <Route path="/app/audit" element={<AuditPage />} />
             </Route>
 
             <Route element={<RequirePermission permission={permissions.roleRead} />}>

@@ -76,6 +76,8 @@ const navigation: NavigationItem[] = [
   {
     label: 'Audit activity',
     icon: FileClock,
+    to: '/app/audit',
+    requires: permissions.auditRead,
   },
 ]
 

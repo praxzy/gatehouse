@@ -12,7 +12,12 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
+import type { AuditEvent } from '@/api/audit'
+import { useRecentAuditEvents } from '@/audit/queries'
 import { useCurrentUser } from '@/auth/currentUser'
+import { hasPermission, permissions } from '@/auth/permissions'
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import { Surface } from '@/components/ui/surface'
 import { usePointerTilt } from '@/hooks/usePointerTilt'
 import { cn } from '@/lib/utils'
@@ -49,6 +54,10 @@ const controlSurfaceMotion = [
 
 export function DashboardPage() {
   const currentUser = useCurrentUser()
+  const canReadAudit = currentUser.data
+    ? hasPermission(currentUser.data.permissions, permissions.auditRead)
+    : false
+  const recentAudit = useRecentAuditEvents(canReadAudit)
 
   if (!currentUser.data) {
     return null
@@ -91,11 +100,16 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="mt-9 grid gap-5 xl:grid-cols-[minmax(0,1fr)_23rem]">
-        <BoundaryActivity />
-
-        <OrganizationSetup mfaEnrolled={user.mfa_enrolled} />
-      </section>
+      {canReadAudit ? (
+        <section className="mt-9 grid gap-5 xl:grid-cols-[minmax(0,1fr)_23rem]">
+          <BoundaryActivity audit={recentAudit} />
+          <OrganizationSetup mfaEnrolled={user.mfa_enrolled} />
+        </section>
+      ) : (
+        <section className="mt-9 max-w-md">
+          <OrganizationSetup mfaEnrolled={user.mfa_enrolled} />
+        </section>
+      )}
     </div>
   )
 }
@@ -359,22 +373,66 @@ function ControlSurface({
   )
 }
 
-function BoundaryActivity() {
+function BoundaryActivity({ audit }: { audit: ReturnType<typeof useRecentAuditEvents> }) {
   return (
     <Surface className="motion-enter motion-enter-delay-4">
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div>
-          <p className="text-sm font-semibold">Recent activity</p>
-        </div>
+        <h2 className="text-sm font-semibold">Recent activity</h2>
+        <Link
+          to="/app/audit"
+          className="flex items-center gap-1 text-xs font-semibold text-primary"
+        >
+          View all
+          <ArrowUpRight size={14} aria-hidden="true" />
+        </Link>
       </div>
 
-      <div className="grid min-h-56 place-items-center px-6 py-10 text-center">
-        <div className="max-w-sm">
-          <h3 className="mt-5 font-heading text-xl font-medium">No activity yet</h3>
+      {audit.isPending ? (
+        <div
+          className="flex min-h-56 items-center justify-center gap-3 text-sm text-muted-foreground"
+          aria-live="polite"
+        >
+          <Spinner />
+          Loading activity
         </div>
-      </div>
+      ) : audit.isError ? (
+        <div className="grid min-h-56 place-items-center gap-3 px-6 py-10 text-center">
+          <p className="text-sm text-muted-foreground">Activity couldn’t be loaded.</p>
+          <Button type="button" variant="outline" onClick={() => audit.refetch()}>
+            Try again
+          </Button>
+        </div>
+      ) : audit.data.events.length === 0 ? (
+        <div className="grid min-h-56 place-items-center px-6 py-10 text-center">
+          <p className="text-sm text-muted-foreground">No activity yet.</p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-border px-5">
+          {audit.data.events.map((event) => (
+            <li key={event.event_id} className="flex items-start justify-between gap-4 py-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{activityLabel(event)}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {event.actor_display_name ||
+                    event.actor_email ||
+                    event.actor_user_id ||
+                    event.actor_kind}
+                </p>
+              </div>
+              <time dateTime={event.occurred_at} className="shrink-0 text-xs text-muted-foreground">
+                {new Date(event.occurred_at).toLocaleDateString()}
+              </time>
+            </li>
+          ))}
+        </ul>
+      )}
     </Surface>
   )
+}
+
+function activityLabel(event: AuditEvent) {
+  const label = event.event_type.replaceAll(/[._]/g, ' ')
+  return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
 function OrganizationSetup({ mfaEnrolled }: { mfaEnrolled: boolean }) {
