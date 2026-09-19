@@ -60,6 +60,12 @@ func run() error {
 	}
 
 	auditWriter := audit.NewWriter()
+	exportService, err := auditExportServiceFromEnvironment(
+		context.Background(), pool, auditWriter,
+	)
+	if err != nil {
+		return err
+	}
 
 	loginLimiter, err := auth.NewLocalLoginRateLimiter(
 		10,
@@ -155,6 +161,7 @@ func run() error {
 			httpapi.Dependencies{
 				Authentication: authentication,
 				Applications:   applications,
+				AuditExports:   exportService,
 				OIDCMetadata:   oidcProvider,
 				SessionCookie: httpapi.NewSessionCookie(
 					cookieSecure,
@@ -174,6 +181,9 @@ func run() error {
 		os.Interrupt,
 		syscall.SIGTERM,
 	)
+	if exportService != nil {
+		go runAuditExportDispatcher(shutdownSignal, exportService)
+	}
 	defer stop()
 
 	serverError := make(chan error, 1)

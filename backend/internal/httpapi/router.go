@@ -12,6 +12,7 @@ import (
 type Dependencies struct {
 	Authentication    AuthenticationService
 	Applications      ApplicationService
+	AuditExports      AuditExportService
 	OIDCMetadata      OIDCMetadataService
 	SessionCookie     SessionCookie
 	OIDCAuthorization OIDCAuthorizationService
@@ -76,6 +77,9 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		}
 		applicationHandler := applicationHandler{
 			applications: dependencies.Applications,
+		}
+		exportHandler := auditExportHandler{
+			exports: dependencies.AuditExports,
 		}
 
 		router.Route("/api/v1/invitations", func(router chi.Router) {
@@ -143,6 +147,13 @@ func NewRouter(dependencies Dependencies) http.Handler {
 			).Get(
 				"/api/v1/audit-events",
 				handler.listAuditEvents,
+			)
+
+			router.With(
+				requirePermission(auth.PermissionAuditExport),
+			).Post(
+				"/api/v1/audit-exports",
+				exportHandler.create,
 			)
 
 			if dependencies.Applications != nil {
