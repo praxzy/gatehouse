@@ -121,3 +121,43 @@ ORDER BY
     audit_event.occurred_at DESC,
     audit_event.id DESC
 LIMIT sqlc.arg(page_size);
+
+-- name: ListAuditEventsForExport :many
+SELECT audit_event.*
+FROM audit_events AS audit_event
+WHERE audit_event.tenant_id = sqlc.arg(tenant_id)
+  AND audit_event.occurred_at < sqlc.arg(snapshot_at)::timestamptz
+  AND (
+      sqlc.narg(filter_actor_user_id)::uuid IS NULL
+      OR audit_event.actor_user_id = sqlc.narg(filter_actor_user_id)::uuid
+  )
+  AND (
+      sqlc.narg(filter_application_id)::uuid IS NULL
+      OR audit_event.application_id = sqlc.narg(filter_application_id)::uuid
+  )
+  AND (
+      sqlc.narg(filter_event_type)::text IS NULL
+      OR audit_event.event_type = sqlc.narg(filter_event_type)::text
+  )
+  AND (
+      sqlc.narg(filter_outcome)::text IS NULL
+      OR audit_event.outcome = sqlc.narg(filter_outcome)::text
+  )
+  AND (
+      sqlc.narg(time_from)::timestamptz IS NULL
+      OR audit_event.occurred_at >= sqlc.narg(time_from)::timestamptz
+  )
+  AND (
+      sqlc.narg(time_until)::timestamptz IS NULL
+      OR audit_event.occurred_at < sqlc.narg(time_until)::timestamptz
+  )
+  AND (
+      sqlc.narg(cursor_occurred_at)::timestamptz IS NULL
+      OR (audit_event.occurred_at, audit_event.id) <
+         (
+             sqlc.narg(cursor_occurred_at)::timestamptz,
+             sqlc.narg(cursor_id)::uuid
+         )
+  )
+ORDER BY audit_event.occurred_at DESC, audit_event.id DESC
+LIMIT sqlc.arg(page_size);

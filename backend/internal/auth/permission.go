@@ -9,6 +9,7 @@ const (
 	PermissionApplicationRead   = "application.read"
 	PermissionApplicationManage = "application.manage"
 	PermissionAuditRead         = "audit.read"
+	PermissionAuditExport       = "audit.export"
 )
 
 func (session SessionContext) HasPermission(

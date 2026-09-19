@@ -111,6 +111,30 @@ type EmailVerificationToken struct {
 	ConsumedAt pgtype.Timestamptz `json:"consumed_at"`
 }
 
+type ExportJob struct {
+	ID                      pgtype.UUID        `json:"id"`
+	TenantID                pgtype.UUID        `json:"tenant_id"`
+	RequestedByMembershipID pgtype.UUID        `json:"requested_by_membership_id"`
+	Format                  string             `json:"format"`
+	Status                  string             `json:"status"`
+	FilterActorUserID       pgtype.UUID        `json:"filter_actor_user_id"`
+	FilterApplicationID     pgtype.UUID        `json:"filter_application_id"`
+	FilterEventType         *string            `json:"filter_event_type"`
+	FilterOutcome           *string            `json:"filter_outcome"`
+	TimeFrom                pgtype.Timestamptz `json:"time_from"`
+	TimeUntil               pgtype.Timestamptz `json:"time_until"`
+	SnapshotAt              pgtype.Timestamptz `json:"snapshot_at"`
+	AttemptCount            int32              `json:"attempt_count"`
+	EnqueuedAt              pgtype.Timestamptz `json:"enqueued_at"`
+	LeaseExpiresAt          pgtype.Timestamptz `json:"lease_expires_at"`
+	OutputObjectKey         *string            `json:"output_object_key"`
+	LastErrorCode           *string            `json:"last_error_code"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	CompletedAt             pgtype.Timestamptz `json:"completed_at"`
+	FailedAt                pgtype.Timestamptz `json:"failed_at"`
+}
+
 type Membership struct {
 	ID        pgtype.UUID        `json:"id"`
 	TenantID  pgtype.UUID        `json:"tenant_id"`

@@ -120,6 +120,110 @@ func (q *Queries) CreateAuditEvent(ctx context.Context, arg CreateAuditEventPara
 	return i, err
 }
 
+const listAuditEventsForExport = `-- name: ListAuditEventsForExport :many
+SELECT audit_event.id, audit_event.tenant_id, audit_event.actor_kind, audit_event.actor_user_id, audit_event.actor_membership_id, audit_event.application_id, audit_event.session_id, audit_event.event_type, audit_event.outcome, audit_event.subject_type, audit_event.subject_id, audit_event.request_id, audit_event.source_ip, audit_event.user_agent, audit_event.metadata, audit_event.occurred_at
+FROM audit_events AS audit_event
+WHERE audit_event.tenant_id = $1
+  AND audit_event.occurred_at < $2::timestamptz
+  AND (
+      $3::uuid IS NULL
+      OR audit_event.actor_user_id = $3::uuid
+  )
+  AND (
+      $4::uuid IS NULL
+      OR audit_event.application_id = $4::uuid
+  )
+  AND (
+      $5::text IS NULL
+      OR audit_event.event_type = $5::text
+  )
+  AND (
+      $6::text IS NULL
+      OR audit_event.outcome = $6::text
+  )
+  AND (
+      $7::timestamptz IS NULL
+      OR audit_event.occurred_at >= $7::timestamptz
+  )
+  AND (
+      $8::timestamptz IS NULL
+      OR audit_event.occurred_at < $8::timestamptz
+  )
+  AND (
+      $9::timestamptz IS NULL
+      OR (audit_event.occurred_at, audit_event.id) <
+         (
+             $9::timestamptz,
+             $10::uuid
+         )
+  )
+ORDER BY audit_event.occurred_at DESC, audit_event.id DESC
+LIMIT $11
+`
+
+type ListAuditEventsForExportParams struct {
+	TenantID            pgtype.UUID        `json:"tenant_id"`
+	SnapshotAt          pgtype.Timestamptz `json:"snapshot_at"`
+	FilterActorUserID   pgtype.UUID        `json:"filter_actor_user_id"`
+	FilterApplicationID pgtype.UUID        `json:"filter_application_id"`
+	FilterEventType     *string            `json:"filter_event_type"`
+	FilterOutcome       *string            `json:"filter_outcome"`
+	TimeFrom            pgtype.Timestamptz `json:"time_from"`
+	TimeUntil           pgtype.Timestamptz `json:"time_until"`
+	CursorOccurredAt    pgtype.Timestamptz `json:"cursor_occurred_at"`
+	CursorID            pgtype.UUID        `json:"cursor_id"`
+	PageSize            int32              `json:"page_size"`
+}
+
+func (q *Queries) ListAuditEventsForExport(ctx context.Context, arg ListAuditEventsForExportParams) ([]AuditEvent, error) {
+	rows, err := q.db.Query(ctx, listAuditEventsForExport,
+		arg.TenantID,
+		arg.SnapshotAt,
+		arg.FilterActorUserID,
+		arg.FilterApplicationID,
+		arg.FilterEventType,
+		arg.FilterOutcome,
+		arg.TimeFrom,
+		arg.TimeUntil,
+		arg.CursorOccurredAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditEvent{}
+	for rows.Next() {
+		var i AuditEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.ActorKind,
+			&i.ActorUserID,
+			&i.ActorMembershipID,
+			&i.ApplicationID,
+			&i.SessionID,
+			&i.EventType,
+			&i.Outcome,
+			&i.SubjectType,
+			&i.SubjectID,
+			&i.RequestID,
+			&i.SourceIp,
+			&i.UserAgent,
+			&i.Metadata,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTenantAuditEvents = `-- name: ListTenantAuditEvents :many
 SELECT
     audit_event.id,

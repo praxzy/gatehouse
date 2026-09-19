@@ -51,6 +51,7 @@ const (
 	EventTokenExchange            EventType = "token.exchange"
 	EventSessionCreated           EventType = "session.created"
 	EventSessionRevoked           EventType = "session.revoked"
+	EventAuditExportRequested     EventType = "audit.export_requested"
 )
 
 var (
@@ -164,6 +165,9 @@ var metadataAllowlists = map[EventType]map[string]struct{}{
 	},
 	EventSessionRevoked: {
 		"revocation_reason": {},
+	},
+	EventAuditExportRequested: {
+		"format": {},
 	},
 }
 
