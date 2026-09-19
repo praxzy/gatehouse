@@ -1,4 +1,4 @@
-.PHONY: dev api web portal db-up test-db-up migrate test check generate stop
+.PHONY: dev api web portal audit-export-worker db-up test-db-up migrate test check generate stop
 
 dev:
 	@./scripts/dev.sh
@@ -20,6 +20,9 @@ web:
 
 portal:
 	@bash -c 'set -a; source .env; set +a; cd examples/employee-portal; go run ./cmd/server'
+
+audit-export-worker:
+	@bash -c 'set -a; source .env; set +a; cd backend; go run ./cmd/audit-export-worker'
 
 test: test-db-up
 	@bash -c 'set -a; source .env; set +a; cd backend; go test ./...'

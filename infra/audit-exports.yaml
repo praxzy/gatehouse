@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private S3 storage and bounded SQS redrive for Gatehouse audit exports.
+
+Resources:
+  AuditExportDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: alias/aws/sqs
+      MessageRetentionPeriod: 1209600
+
+  AuditExportQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: alias/aws/sqs
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 90
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt AuditExportDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  AuditExportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAuditExports
+            Status: Enabled
+            ExpirationInDays: 30
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+Outputs:
+  QueueURL:
+    Value: !Ref AuditExportQueue
+  QueueARN:
+    Value: !GetAtt AuditExportQueue.Arn
+  DeadLetterQueueURL:
+    Value: !Ref AuditExportDeadLetterQueue
+  BucketName:
+    Value: !Ref AuditExportBucket
