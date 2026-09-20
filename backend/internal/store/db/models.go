@@ -248,6 +248,42 @@ type TotpCredential struct {
 	EnrollmentExpiresAt  pgtype.Timestamptz `json:"enrollment_expires_at"`
 }
 
+type UpstreamOidcConnection struct {
+	ID                     pgtype.UUID        `json:"id"`
+	TenantID               pgtype.UUID        `json:"tenant_id"`
+	DisplayName            string             `json:"display_name"`
+	Issuer                 string             `json:"issuer"`
+	ClientID               string             `json:"client_id"`
+	ClientSecretCiphertext []byte             `json:"client_secret_ciphertext"`
+	ClientSecretNonce      []byte             `json:"client_secret_nonce"`
+	EncryptionKeyID        string             `json:"encryption_key_id"`
+	Status                 string             `json:"status"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `json:"updated_at"`
+}
+
+type UpstreamOidcIdentity struct {
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	ConnectionID pgtype.UUID        `json:"connection_id"`
+	Subject      string             `json:"subject"`
+	MembershipID pgtype.UUID        `json:"membership_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type UpstreamOidcTransaction struct {
+	StateHash              []byte             `json:"state_hash"`
+	TenantID               pgtype.UUID        `json:"tenant_id"`
+	ConnectionID           pgtype.UUID        `json:"connection_id"`
+	NonceHash              []byte             `json:"nonce_hash"`
+	PkceVerifierCiphertext []byte             `json:"pkce_verifier_ciphertext"`
+	PkceVerifierNonce      []byte             `json:"pkce_verifier_nonce"`
+	EncryptionKeyID        string             `json:"encryption_key_id"`
+	ReturnPath             string             `json:"return_path"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt              pgtype.Timestamptz `json:"expires_at"`
+	ConsumedAt             pgtype.Timestamptz `json:"consumed_at"`
+}
+
 type User struct {
 	ID              pgtype.UUID        `json:"id"`
 	Email           string             `json:"email"`
