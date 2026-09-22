@@ -55,6 +55,7 @@ type Querier interface {
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetActiveSessionByTokenHashRow, error)
 	GetActiveTokenClient(ctx context.Context, clientID string) (GetActiveTokenClientRow, error)
 	GetActiveUpstreamOIDCIdentity(ctx context.Context, arg GetActiveUpstreamOIDCIdentityParams) (GetActiveUpstreamOIDCIdentityRow, error)
+	GetActiveUpstreamOIDCIdentityForSessionCreation(ctx context.Context, arg GetActiveUpstreamOIDCIdentityForSessionCreationParams) (GetActiveUpstreamOIDCIdentityForSessionCreationRow, error)
 	GetApplicationByID(ctx context.Context, arg GetApplicationByIDParams) (GetApplicationByIDRow, error)
 	GetAuditExportJobByID(ctx context.Context, jobID pgtype.UUID) (ExportJob, error)
 	GetAuthorizationTransactionByIDAndStateHash(ctx context.Context, arg GetAuthorizationTransactionByIDAndStateHashParams) (GetAuthorizationTransactionByIDAndStateHashRow, error)

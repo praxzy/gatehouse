@@ -183,3 +183,31 @@ RETURNING *;
 -- name: DeleteExpiredUpstreamOIDCTransactions :execrows
 DELETE FROM upstream_oidc_transactions
 WHERE expires_at <= now();
+
+-- name: GetActiveUpstreamOIDCIdentityForSessionCreation :one
+SELECT
+    identity.tenant_id,
+    identity.connection_id,
+    identity.subject,
+    member.id AS membership_id,
+    member.user_id
+FROM upstream_oidc_identities AS identity
+JOIN upstream_oidc_connections AS connection
+  ON connection.tenant_id = identity.tenant_id
+ AND connection.id = identity.connection_id
+JOIN tenants AS tenant
+  ON tenant.id = identity.tenant_id
+JOIN memberships AS member
+  ON member.tenant_id = identity.tenant_id
+ AND member.id = identity.membership_id
+JOIN users AS app_user
+  ON app_user.id = member.user_id
+WHERE identity.tenant_id = sqlc.arg(tenant_id)
+  AND identity.connection_id = sqlc.arg(connection_id)
+  AND identity.subject = sqlc.arg(subject)
+  AND connection.status = 'enabled'
+  AND tenant.status = 'active'
+  AND member.status = 'active'
+  AND app_user.status = 'active'
+  AND app_user.email_verified_at IS NOT NULL
+FOR SHARE OF identity, connection, tenant, member, app_user;

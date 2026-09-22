@@ -299,6 +299,62 @@ func (q *Queries) GetActiveUpstreamOIDCIdentity(ctx context.Context, arg GetActi
 	return i, err
 }
 
+const getActiveUpstreamOIDCIdentityForSessionCreation = `-- name: GetActiveUpstreamOIDCIdentityForSessionCreation :one
+SELECT
+    identity.tenant_id,
+    identity.connection_id,
+    identity.subject,
+    member.id AS membership_id,
+    member.user_id
+FROM upstream_oidc_identities AS identity
+JOIN upstream_oidc_connections AS connection
+  ON connection.tenant_id = identity.tenant_id
+ AND connection.id = identity.connection_id
+JOIN tenants AS tenant
+  ON tenant.id = identity.tenant_id
+JOIN memberships AS member
+  ON member.tenant_id = identity.tenant_id
+ AND member.id = identity.membership_id
+JOIN users AS app_user
+  ON app_user.id = member.user_id
+WHERE identity.tenant_id = $1
+  AND identity.connection_id = $2
+  AND identity.subject = $3
+  AND connection.status = 'enabled'
+  AND tenant.status = 'active'
+  AND member.status = 'active'
+  AND app_user.status = 'active'
+  AND app_user.email_verified_at IS NOT NULL
+FOR SHARE OF identity, connection, tenant, member, app_user
+`
+
+type GetActiveUpstreamOIDCIdentityForSessionCreationParams struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	ConnectionID pgtype.UUID `json:"connection_id"`
+	Subject      string      `json:"subject"`
+}
+
+type GetActiveUpstreamOIDCIdentityForSessionCreationRow struct {
+	TenantID     pgtype.UUID `json:"tenant_id"`
+	ConnectionID pgtype.UUID `json:"connection_id"`
+	Subject      string      `json:"subject"`
+	MembershipID pgtype.UUID `json:"membership_id"`
+	UserID       pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetActiveUpstreamOIDCIdentityForSessionCreation(ctx context.Context, arg GetActiveUpstreamOIDCIdentityForSessionCreationParams) (GetActiveUpstreamOIDCIdentityForSessionCreationRow, error) {
+	row := q.db.QueryRow(ctx, getActiveUpstreamOIDCIdentityForSessionCreation, arg.TenantID, arg.ConnectionID, arg.Subject)
+	var i GetActiveUpstreamOIDCIdentityForSessionCreationRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.ConnectionID,
+		&i.Subject,
+		&i.MembershipID,
+		&i.UserID,
+	)
+	return i, err
+}
+
 const getEnabledUpstreamOIDCConnectionByID = `-- name: GetEnabledUpstreamOIDCConnectionByID :one
 SELECT id, tenant_id, display_name, issuer, client_id, client_secret_ciphertext, client_secret_nonce, encryption_key_id, status, created_at, updated_at
 FROM upstream_oidc_connections
