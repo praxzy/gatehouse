@@ -124,7 +124,7 @@ SET
 WHERE token_hash = sqlc.arg(token_hash)
   AND revoked_at IS NULL;
 
--- name: RevokePasswordSessionForMFA :execrows
+-- name: RevokePrimarySessionForMFA :execrows
 UPDATE sessions
 SET
     revoked_at = now(),
@@ -133,7 +133,7 @@ WHERE tenant_id = sqlc.arg(tenant_id)
   AND id = sqlc.arg(session_id)
   AND membership_id = sqlc.arg(membership_id)
   AND user_id = sqlc.arg(user_id)
-  AND authentication_level = 'password'
+  AND authentication_level IN ('password', 'upstream')
   AND revoked_at IS NULL
   AND expires_at > now();
 

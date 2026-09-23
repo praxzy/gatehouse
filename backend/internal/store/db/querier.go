@@ -102,7 +102,7 @@ type Querier interface {
 	MembershipHasOwnerRole(ctx context.Context, arg MembershipHasOwnerRoleParams) (bool, error)
 	RedeemAuthorizationCode(ctx context.Context, arg RedeemAuthorizationCodeParams) (RedeemAuthorizationCodeRow, error)
 	RenewAuditExportJobLease(ctx context.Context, arg RenewAuditExportJobLeaseParams) (int64, error)
-	RevokePasswordSessionForMFA(ctx context.Context, arg RevokePasswordSessionForMFAParams) (int64, error)
+	RevokePrimarySessionForMFA(ctx context.Context, arg RevokePrimarySessionForMFAParams) (int64, error)
 	RevokeSessionByID(ctx context.Context, arg RevokeSessionByIDParams) (int64, error)
 	RevokeSessionByTokenHash(ctx context.Context, arg RevokeSessionByTokenHashParams) (int64, error)
 	RevokeSessionsForMembership(ctx context.Context, arg RevokeSessionsForMembershipParams) (int64, error)

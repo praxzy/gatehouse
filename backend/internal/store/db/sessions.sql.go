@@ -210,7 +210,7 @@ func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, tokenHash []b
 	return i, err
 }
 
-const revokePasswordSessionForMFA = `-- name: RevokePasswordSessionForMFA :execrows
+const revokePrimarySessionForMFA = `-- name: RevokePrimarySessionForMFA :execrows
 UPDATE sessions
 SET
     revoked_at = now(),
@@ -219,20 +219,20 @@ WHERE tenant_id = $1
   AND id = $2
   AND membership_id = $3
   AND user_id = $4
-  AND authentication_level = 'password'
+  AND authentication_level IN ('password', 'upstream')
   AND revoked_at IS NULL
   AND expires_at > now()
 `
 
-type RevokePasswordSessionForMFAParams struct {
+type RevokePrimarySessionForMFAParams struct {
 	TenantID     pgtype.UUID `json:"tenant_id"`
 	SessionID    pgtype.UUID `json:"session_id"`
 	MembershipID pgtype.UUID `json:"membership_id"`
 	UserID       pgtype.UUID `json:"user_id"`
 }
 
-func (q *Queries) RevokePasswordSessionForMFA(ctx context.Context, arg RevokePasswordSessionForMFAParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokePasswordSessionForMFA,
+func (q *Queries) RevokePrimarySessionForMFA(ctx context.Context, arg RevokePrimarySessionForMFAParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokePrimarySessionForMFA,
 		arg.TenantID,
 		arg.SessionID,
 		arg.MembershipID,

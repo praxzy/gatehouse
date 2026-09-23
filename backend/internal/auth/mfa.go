@@ -695,8 +695,12 @@ func (service *Service) createMFASession(
 	queries *store.Queries,
 	currentSession SessionContext,
 ) (SessionGrant, error) {
-	if currentSession.AuthenticationLevel != "password" {
+	switch currentSession.AuthenticationLevel {
+	case "password", "upstream":
+	case "mfa":
 		return SessionGrant{}, ErrMFAAlreadySatisfied
+	default:
+		return SessionGrant{}, ErrInvalidSession
 	}
 
 	membership, err := queries.GetActiveMembershipForSessionCreation(
@@ -722,9 +726,9 @@ func (service *Service) createMFASession(
 		return SessionGrant{}, ErrInvalidSession
 	}
 
-	revoked, err := queries.RevokePasswordSessionForMFA(
+	revoked, err := queries.RevokePrimarySessionForMFA(
 		ctx,
-		store.RevokePasswordSessionForMFAParams{
+		store.RevokePrimarySessionForMFAParams{
 			TenantID:     currentSession.TenantID,
 			SessionID:    currentSession.SessionID,
 			MembershipID: currentSession.MembershipID,
@@ -733,7 +737,7 @@ func (service *Service) createMFASession(
 	)
 	if err != nil {
 		return SessionGrant{}, fmt.Errorf(
-			"revoke password session for MFA: %w",
+			"revoke primary session for MFA: %w",
 			err,
 		)
 	}
