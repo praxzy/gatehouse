@@ -111,6 +111,15 @@ func run() error {
 		)
 	}
 
+	upstreamFederation, err :=
+		upstreamFederationServicesFromEnvironment(
+			pool,
+			authentication,
+		)
+	if err != nil {
+		return err
+	}
+
 	applications, err := application.NewService(
 		pool,
 		auditWriter,
@@ -166,8 +175,10 @@ func run() error {
 				SessionCookie: httpapi.NewSessionCookie(
 					cookieSecure,
 				),
-				OIDCAuthorization: oidcAuthorization,
-				OIDCTokens:        oidcTokens,
+				OIDCAuthorization:       oidcAuthorization,
+				OIDCTokens:              oidcTokens,
+				FederationAuthorization: upstreamFederation.authorization,
+				FederationCallback:      upstreamFederation.callback,
 			},
 		),
 		ReadHeaderTimeout: 5 * time.Second,

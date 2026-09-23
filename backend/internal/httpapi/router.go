@@ -10,13 +10,15 @@ import (
 )
 
 type Dependencies struct {
-	Authentication    AuthenticationService
-	Applications      ApplicationService
-	AuditExports      AuditExportService
-	OIDCMetadata      OIDCMetadataService
-	SessionCookie     SessionCookie
-	OIDCAuthorization OIDCAuthorizationService
-	OIDCTokens        OIDCTokenService
+	Authentication          AuthenticationService
+	Applications            ApplicationService
+	AuditExports            AuditExportService
+	OIDCMetadata            OIDCMetadataService
+	SessionCookie           SessionCookie
+	OIDCAuthorization       OIDCAuthorizationService
+	OIDCTokens              OIDCTokenService
+	FederationAuthorization FederationAuthorizationStarter
+	FederationCallback      FederationAuthorizationCompleter
 }
 
 type healthResponse struct {
@@ -37,6 +39,11 @@ func NewRouter(dependencies Dependencies) http.Handler {
 	}
 	tokenHandler := oidcTokenHandler{
 		tokens: dependencies.OIDCTokens,
+	}
+	federationHandler := federationHandler{
+		authorization: dependencies.FederationAuthorization,
+		callback:      dependencies.FederationCallback,
+		sessionCookie: dependencies.SessionCookie,
 	}
 
 	if dependencies.OIDCTokens != nil {
@@ -67,6 +74,20 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		router.Get(
 			"/oauth/authorize/continue",
 			oidcHandler.continueAuthorization,
+		)
+	}
+
+	if dependencies.FederationAuthorization != nil {
+		router.Get(
+			"/api/v1/auth/federation/{tenantSlug}/start",
+			federationHandler.begin,
+		)
+	}
+
+	if dependencies.FederationCallback != nil {
+		router.Get(
+			"/api/v1/auth/federation/callback",
+			federationHandler.complete,
 		)
 	}
 
