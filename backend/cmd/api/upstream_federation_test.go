@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 )
 
@@ -68,6 +69,7 @@ func TestUpstreamFederationIsOptional(
 		upstreamFederationServicesFromEnvironment(
 			&pgxpool.Pool{},
 			&auth.Service{},
+			audit.NewWriter(),
 		)
 	if err != nil {
 		t.Fatalf(
@@ -77,7 +79,8 @@ func TestUpstreamFederationIsOptional(
 	}
 
 	if services.authorization != nil ||
-		services.callback != nil {
+		services.callback != nil ||
+		services.management != nil {
 		t.Fatal(
 			"expected federation services to remain disabled",
 		)
@@ -93,6 +96,7 @@ func TestUpstreamFederationConfigurationBuildsServices(
 		upstreamFederationServicesFromEnvironment(
 			&pgxpool.Pool{},
 			&auth.Service{},
+			audit.NewWriter(),
 		)
 	if err != nil {
 		t.Fatalf(
@@ -102,7 +106,8 @@ func TestUpstreamFederationConfigurationBuildsServices(
 	}
 
 	if services.authorization == nil ||
-		services.callback == nil {
+		services.callback == nil ||
+		services.management == nil {
 		t.Fatal(
 			"expected configured federation services",
 		)
@@ -177,6 +182,7 @@ func TestUpstreamFederationRejectsInvalidConfiguration(
 				upstreamFederationServicesFromEnvironment(
 					&pgxpool.Pool{},
 					&auth.Service{},
+					audit.NewWriter(),
 				)
 			if err == nil {
 				t.Fatal(

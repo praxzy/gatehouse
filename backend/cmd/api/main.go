@@ -115,6 +115,7 @@ func run() error {
 		upstreamFederationServicesFromEnvironment(
 			pool,
 			authentication,
+			auditWriter,
 		)
 	if err != nil {
 		return err
@@ -179,6 +180,7 @@ func run() error {
 				OIDCTokens:              oidcTokens,
 				FederationAuthorization: upstreamFederation.authorization,
 				FederationCallback:      upstreamFederation.callback,
+				FederationManagement:    upstreamFederation.management,
 			},
 		),
 		ReadHeaderTimeout: 5 * time.Second,

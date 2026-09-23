@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	"github.com/praxzy/gatehouse/backend/internal/federation"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
@@ -18,11 +19,13 @@ import (
 type upstreamFederationServices struct {
 	authorization *federation.AuthorizationService
 	callback      *federation.AuthorizationCallbackService
+	management    *federation.ManagementService
 }
 
 func upstreamFederationServicesFromEnvironment(
 	pool *pgxpool.Pool,
 	authentication *auth.Service,
+	auditWriter audit.EventWriter,
 ) (upstreamFederationServices, error) {
 	redirectURI := strings.TrimSpace(
 		os.Getenv("UPSTREAM_OIDC_REDIRECT_URI"),
@@ -138,6 +141,20 @@ func upstreamFederationServicesFromEnvironment(
 
 	queries := store.New(pool)
 
+	management, err :=
+		federation.NewManagementService(
+			pool,
+			discovery,
+			secretCipher,
+			auditWriter,
+		)
+	if err != nil {
+		return upstreamFederationServices{}, fmt.Errorf(
+			"create upstream federation management service: %w",
+			err,
+		)
+	}
+
 	authorization, err :=
 		federation.NewAuthorizationService(
 			queries,
@@ -172,6 +189,7 @@ func upstreamFederationServicesFromEnvironment(
 	return upstreamFederationServices{
 		authorization: authorization,
 		callback:      callback,
+		management:    management,
 	}, nil
 }
 
