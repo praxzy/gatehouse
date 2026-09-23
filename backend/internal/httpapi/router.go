@@ -19,6 +19,7 @@ type Dependencies struct {
 	OIDCTokens              OIDCTokenService
 	FederationAuthorization FederationAuthorizationStarter
 	FederationCallback      FederationAuthorizationCompleter
+	FederationManagement    FederationManagementService
 }
 
 type healthResponse struct {
@@ -45,6 +46,10 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		callback:      dependencies.FederationCallback,
 		sessionCookie: dependencies.SessionCookie,
 	}
+	federationManagementHandler :=
+		federationManagementHandler{
+			management: dependencies.FederationManagement,
+		}
 
 	if dependencies.OIDCTokens != nil {
 		router.Post(
@@ -212,6 +217,50 @@ func NewRouter(dependencies Dependencies) http.Handler {
 				).Patch(
 					"/api/v1/applications/{applicationID}/access-policy",
 					applicationHandler.updateApplicationAccessPolicy,
+				)
+			}
+
+			if dependencies.FederationManagement != nil {
+				router.Route(
+					"/api/v1/federation",
+					func(router chi.Router) {
+						router.Use(
+							requirePermission(
+								auth.PermissionFederationManage,
+							),
+						)
+
+						router.Get(
+							"/connection",
+							federationManagementHandler.
+								getConnection,
+						)
+						router.Put(
+							"/connection",
+							federationManagementHandler.
+								saveConnection,
+						)
+						router.Patch(
+							"/connection/status",
+							federationManagementHandler.
+								updateConnectionStatus,
+						)
+						router.Get(
+							"/identity-mappings",
+							federationManagementHandler.
+								listIdentityMappings,
+						)
+						router.Post(
+							"/identity-mappings",
+							federationManagementHandler.
+								createIdentityMapping,
+						)
+						router.Delete(
+							"/identity-mappings",
+							federationManagementHandler.
+								deleteIdentityMapping,
+						)
+					},
 				)
 			}
 		})
