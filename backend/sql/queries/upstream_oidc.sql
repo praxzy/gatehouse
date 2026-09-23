@@ -1,4 +1,4 @@
--- name: CreateUpstreamOIDCConnection :one
+-- name: UpsertUpstreamOIDCConnection :one
 INSERT INTO upstream_oidc_connections (
     tenant_id,
     display_name,
@@ -17,6 +17,18 @@ VALUES (
     sqlc.arg(client_secret_nonce),
     sqlc.arg(encryption_key_id)
 )
+ON CONFLICT (tenant_id)
+DO UPDATE SET
+    display_name = EXCLUDED.display_name,
+    issuer = EXCLUDED.issuer,
+    client_id = EXCLUDED.client_id,
+    client_secret_ciphertext =
+        EXCLUDED.client_secret_ciphertext,
+    client_secret_nonce =
+        EXCLUDED.client_secret_nonce,
+    encryption_key_id =
+        EXCLUDED.encryption_key_id,
+    updated_at = now()
 RETURNING *;
 
 
@@ -25,6 +37,11 @@ SELECT *
 FROM upstream_oidc_connections
 WHERE tenant_id = sqlc.arg(tenant_id);
 
+-- name: GetTenantUpstreamOIDCConnectionForUpdate :one
+SELECT *
+FROM upstream_oidc_connections
+WHERE tenant_id = sqlc.arg(tenant_id)
+FOR UPDATE;
 
 -- name: GetEnabledUpstreamOIDCConnectionByID :one
 SELECT *
@@ -85,7 +102,6 @@ JOIN memberships AS membership
  AND membership.id = sqlc.arg(membership_id)
 WHERE connection.tenant_id = sqlc.arg(tenant_id)
   AND connection.id = sqlc.arg(connection_id)
-  AND connection.status = 'enabled'
   AND membership.status = 'active'
 RETURNING *;
 
@@ -112,11 +128,12 @@ WHERE identity.tenant_id = sqlc.arg(tenant_id)
 ORDER BY app_user.display_name, app_user.email, identity.subject;
 
 
--- name: DeleteUpstreamOIDCIdentity :execrows
+-- name: DeleteUpstreamOIDCIdentity :one
 DELETE FROM upstream_oidc_identities
 WHERE tenant_id = sqlc.arg(tenant_id)
   AND connection_id = sqlc.arg(connection_id)
-  AND subject = sqlc.arg(subject);
+  AND subject = sqlc.arg(subject)
+RETURNING *;
 
 
 -- name: GetActiveUpstreamOIDCIdentity :one

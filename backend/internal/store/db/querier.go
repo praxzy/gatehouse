@@ -37,7 +37,6 @@ type Querier interface {
 	CreatePasswordCredential(ctx context.Context, arg CreatePasswordCredentialParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (CreateTenantRow, error)
-	CreateUpstreamOIDCConnection(ctx context.Context, arg CreateUpstreamOIDCConnectionParams) (UpstreamOidcConnection, error)
 	CreateUpstreamOIDCIdentity(ctx context.Context, arg CreateUpstreamOIDCIdentityParams) (UpstreamOidcIdentity, error)
 	CreateUpstreamOIDCTransaction(ctx context.Context, arg CreateUpstreamOIDCTransactionParams) (UpstreamOidcTransaction, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
@@ -46,7 +45,7 @@ type Querier interface {
 	DeleteExpiredUpstreamOIDCTransactions(ctx context.Context) (int64, error)
 	DeleteMembershipRoles(ctx context.Context, arg DeleteMembershipRolesParams) error
 	DeleteRolePermissions(ctx context.Context, arg DeleteRolePermissionsParams) error
-	DeleteUpstreamOIDCIdentity(ctx context.Context, arg DeleteUpstreamOIDCIdentityParams) (int64, error)
+	DeleteUpstreamOIDCIdentity(ctx context.Context, arg DeleteUpstreamOIDCIdentityParams) (UpstreamOidcIdentity, error)
 	EvaluateAuthorizationSession(ctx context.Context, arg EvaluateAuthorizationSessionParams) (EvaluateAuthorizationSessionRow, error)
 	FailAuditExportJob(ctx context.Context, arg FailAuditExportJobParams) (int64, error)
 	FailExpiredExhaustedAuditExportJobs(ctx context.Context, maxAttempts int32) ([]pgtype.UUID, error)
@@ -73,6 +72,7 @@ type Querier interface {
 	GetTenantAuditExportJob(ctx context.Context, arg GetTenantAuditExportJobParams) (ExportJob, error)
 	GetTenantMembershipByEmail(ctx context.Context, arg GetTenantMembershipByEmailParams) (Membership, error)
 	GetTenantUpstreamOIDCConnection(ctx context.Context, tenantID pgtype.UUID) (UpstreamOidcConnection, error)
+	GetTenantUpstreamOIDCConnectionForUpdate(ctx context.Context, tenantID pgtype.UUID) (UpstreamOidcConnection, error)
 	GetUnverifiedUserByEmail(ctx context.Context, email string) (GetUnverifiedUserByEmailRow, error)
 	GetUserForInvitationAcceptance(ctx context.Context, email string) (GetUserForInvitationAcceptanceRow, error)
 	GrantMemberRolePermissions(ctx context.Context, arg GrantMemberRolePermissionsParams) error
@@ -114,6 +114,7 @@ type Querier interface {
 	UpsertEmailVerificationToken(ctx context.Context, arg UpsertEmailVerificationTokenParams) (EmailVerificationToken, error)
 	UpsertMembershipInvitation(ctx context.Context, arg UpsertMembershipInvitationParams) (MembershipInvitation, error)
 	UpsertPendingTOTPCredential(ctx context.Context, arg UpsertPendingTOTPCredentialParams) (TotpCredential, error)
+	UpsertUpstreamOIDCConnection(ctx context.Context, arg UpsertUpstreamOIDCConnectionParams) (UpstreamOidcConnection, error)
 	VerifyEmailByTokenHash(ctx context.Context, tokenHash []byte) (VerifyEmailByTokenHashRow, error)
 }
 

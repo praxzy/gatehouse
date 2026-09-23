@@ -30,28 +30,32 @@ const (
 )
 
 const (
-	EventRegistration             EventType = "auth.registration"
-	EventEmailVerification        EventType = "auth.email_verification"
-	EventLogin                    EventType = "auth.login"
-	EventMFAEnrollmentStarted     EventType = "mfa.enrollment_started"
-	EventMFAEnrollmentConfirmed   EventType = "mfa.enrollment_confirmed"
-	EventMFAChallenge             EventType = "mfa.challenge"
-	EventMFARecoveryCode          EventType = "mfa.recovery_code"
-	EventInvitationCreated        EventType = "member.invitation_created"
-	EventInvitationAccepted       EventType = "member.invitation_accepted"
-	EventMemberRoleChanged        EventType = "member.role_changed"
-	EventMemberStatusChanged      EventType = "member.status_changed"
-	EventRoleCreated              EventType = "rbac.role_created"
-	EventRoleUpdated              EventType = "rbac.role_updated"
-	EventApplicationCreated       EventType = "application.created"
-	EventApplicationPolicyUpdated EventType = "application.access_policy_updated"
-	EventAuthorizationRequest     EventType = "authorization.request"
-	EventAuthorizationDecision    EventType = "authorization.decision"
-	EventAuthorizationCodeIssued  EventType = "authorization.code_issued"
-	EventTokenExchange            EventType = "token.exchange"
-	EventSessionCreated           EventType = "session.created"
-	EventSessionRevoked           EventType = "session.revoked"
-	EventAuditExportRequested     EventType = "audit.export_requested"
+	EventRegistration                      EventType = "auth.registration"
+	EventEmailVerification                 EventType = "auth.email_verification"
+	EventLogin                             EventType = "auth.login"
+	EventMFAEnrollmentStarted              EventType = "mfa.enrollment_started"
+	EventMFAEnrollmentConfirmed            EventType = "mfa.enrollment_confirmed"
+	EventMFAChallenge                      EventType = "mfa.challenge"
+	EventMFARecoveryCode                   EventType = "mfa.recovery_code"
+	EventInvitationCreated                 EventType = "member.invitation_created"
+	EventInvitationAccepted                EventType = "member.invitation_accepted"
+	EventMemberRoleChanged                 EventType = "member.role_changed"
+	EventMemberStatusChanged               EventType = "member.status_changed"
+	EventRoleCreated                       EventType = "rbac.role_created"
+	EventRoleUpdated                       EventType = "rbac.role_updated"
+	EventApplicationCreated                EventType = "application.created"
+	EventApplicationPolicyUpdated          EventType = "application.access_policy_updated"
+	EventAuthorizationRequest              EventType = "authorization.request"
+	EventAuthorizationDecision             EventType = "authorization.decision"
+	EventAuthorizationCodeIssued           EventType = "authorization.code_issued"
+	EventTokenExchange                     EventType = "token.exchange"
+	EventSessionCreated                    EventType = "session.created"
+	EventSessionRevoked                    EventType = "session.revoked"
+	EventAuditExportRequested              EventType = "audit.export_requested"
+	EventFederationConnectionSaved         EventType = "federation.connection_saved"
+	EventFederationConnectionStatusChanged EventType = "federation.connection_status_changed"
+	EventFederationIdentityMapped          EventType = "federation.identity_mapped"
+	EventFederationIdentityUnmapped        EventType = "federation.identity_unmapped"
 )
 
 var (
@@ -168,6 +172,19 @@ var metadataAllowlists = map[EventType]map[string]struct{}{
 	},
 	EventAuditExportRequested: {
 		"format": {},
+	},
+	EventFederationConnectionSaved: {
+		"connection_status": {},
+	},
+	EventFederationConnectionStatusChanged: {
+		"previous_status": {},
+		"new_status":      {},
+	},
+	EventFederationIdentityMapped: {
+		"membership_id": {},
+	},
+	EventFederationIdentityUnmapped: {
+		"membership_id": {},
 	},
 }
 

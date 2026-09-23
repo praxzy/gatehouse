@@ -39,65 +39,6 @@ func (q *Queries) ConsumeUpstreamOIDCTransaction(ctx context.Context, stateHash 
 	return i, err
 }
 
-const createUpstreamOIDCConnection = `-- name: CreateUpstreamOIDCConnection :one
-INSERT INTO upstream_oidc_connections (
-    tenant_id,
-    display_name,
-    issuer,
-    client_id,
-    client_secret_ciphertext,
-    client_secret_nonce,
-    encryption_key_id
-)
-VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7
-)
-RETURNING id, tenant_id, display_name, issuer, client_id, client_secret_ciphertext, client_secret_nonce, encryption_key_id, status, created_at, updated_at
-`
-
-type CreateUpstreamOIDCConnectionParams struct {
-	TenantID               pgtype.UUID `json:"tenant_id"`
-	DisplayName            string      `json:"display_name"`
-	Issuer                 string      `json:"issuer"`
-	ClientID               string      `json:"client_id"`
-	ClientSecretCiphertext []byte      `json:"client_secret_ciphertext"`
-	ClientSecretNonce      []byte      `json:"client_secret_nonce"`
-	EncryptionKeyID        string      `json:"encryption_key_id"`
-}
-
-func (q *Queries) CreateUpstreamOIDCConnection(ctx context.Context, arg CreateUpstreamOIDCConnectionParams) (UpstreamOidcConnection, error) {
-	row := q.db.QueryRow(ctx, createUpstreamOIDCConnection,
-		arg.TenantID,
-		arg.DisplayName,
-		arg.Issuer,
-		arg.ClientID,
-		arg.ClientSecretCiphertext,
-		arg.ClientSecretNonce,
-		arg.EncryptionKeyID,
-	)
-	var i UpstreamOidcConnection
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.DisplayName,
-		&i.Issuer,
-		&i.ClientID,
-		&i.ClientSecretCiphertext,
-		&i.ClientSecretNonce,
-		&i.EncryptionKeyID,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const createUpstreamOIDCIdentity = `-- name: CreateUpstreamOIDCIdentity :one
 INSERT INTO upstream_oidc_identities (
     tenant_id,
@@ -116,7 +57,6 @@ JOIN memberships AS membership
  AND membership.id = $2
 WHERE connection.tenant_id = $3
   AND connection.id = $4
-  AND connection.status = 'enabled'
   AND membership.status = 'active'
 RETURNING tenant_id, connection_id, subject, membership_id, created_at
 `
@@ -226,11 +166,12 @@ func (q *Queries) DeleteExpiredUpstreamOIDCTransactions(ctx context.Context) (in
 	return result.RowsAffected(), nil
 }
 
-const deleteUpstreamOIDCIdentity = `-- name: DeleteUpstreamOIDCIdentity :execrows
+const deleteUpstreamOIDCIdentity = `-- name: DeleteUpstreamOIDCIdentity :one
 DELETE FROM upstream_oidc_identities
 WHERE tenant_id = $1
   AND connection_id = $2
   AND subject = $3
+RETURNING tenant_id, connection_id, subject, membership_id, created_at
 `
 
 type DeleteUpstreamOIDCIdentityParams struct {
@@ -239,12 +180,17 @@ type DeleteUpstreamOIDCIdentityParams struct {
 	Subject      string      `json:"subject"`
 }
 
-func (q *Queries) DeleteUpstreamOIDCIdentity(ctx context.Context, arg DeleteUpstreamOIDCIdentityParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteUpstreamOIDCIdentity, arg.TenantID, arg.ConnectionID, arg.Subject)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+func (q *Queries) DeleteUpstreamOIDCIdentity(ctx context.Context, arg DeleteUpstreamOIDCIdentityParams) (UpstreamOidcIdentity, error) {
+	row := q.db.QueryRow(ctx, deleteUpstreamOIDCIdentity, arg.TenantID, arg.ConnectionID, arg.Subject)
+	var i UpstreamOidcIdentity
+	err := row.Scan(
+		&i.TenantID,
+		&i.ConnectionID,
+		&i.Subject,
+		&i.MembershipID,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getActiveUpstreamOIDCIdentity = `-- name: GetActiveUpstreamOIDCIdentity :one
@@ -441,6 +387,32 @@ func (q *Queries) GetTenantUpstreamOIDCConnection(ctx context.Context, tenantID 
 	return i, err
 }
 
+const getTenantUpstreamOIDCConnectionForUpdate = `-- name: GetTenantUpstreamOIDCConnectionForUpdate :one
+SELECT id, tenant_id, display_name, issuer, client_id, client_secret_ciphertext, client_secret_nonce, encryption_key_id, status, created_at, updated_at
+FROM upstream_oidc_connections
+WHERE tenant_id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetTenantUpstreamOIDCConnectionForUpdate(ctx context.Context, tenantID pgtype.UUID) (UpstreamOidcConnection, error) {
+	row := q.db.QueryRow(ctx, getTenantUpstreamOIDCConnectionForUpdate, tenantID)
+	var i UpstreamOidcConnection
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.DisplayName,
+		&i.Issuer,
+		&i.ClientID,
+		&i.ClientSecretCiphertext,
+		&i.ClientSecretNonce,
+		&i.EncryptionKeyID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listTenantUpstreamOIDCIdentities = `-- name: ListTenantUpstreamOIDCIdentities :many
 SELECT
     identity.tenant_id,
@@ -579,6 +551,77 @@ func (q *Queries) UpdateUpstreamOIDCConnection(ctx context.Context, arg UpdateUp
 		arg.EncryptionKeyID,
 		arg.TenantID,
 		arg.ConnectionID,
+	)
+	var i UpstreamOidcConnection
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.DisplayName,
+		&i.Issuer,
+		&i.ClientID,
+		&i.ClientSecretCiphertext,
+		&i.ClientSecretNonce,
+		&i.EncryptionKeyID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertUpstreamOIDCConnection = `-- name: UpsertUpstreamOIDCConnection :one
+INSERT INTO upstream_oidc_connections (
+    tenant_id,
+    display_name,
+    issuer,
+    client_id,
+    client_secret_ciphertext,
+    client_secret_nonce,
+    encryption_key_id
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7
+)
+ON CONFLICT (tenant_id)
+DO UPDATE SET
+    display_name = EXCLUDED.display_name,
+    issuer = EXCLUDED.issuer,
+    client_id = EXCLUDED.client_id,
+    client_secret_ciphertext =
+        EXCLUDED.client_secret_ciphertext,
+    client_secret_nonce =
+        EXCLUDED.client_secret_nonce,
+    encryption_key_id =
+        EXCLUDED.encryption_key_id,
+    updated_at = now()
+RETURNING id, tenant_id, display_name, issuer, client_id, client_secret_ciphertext, client_secret_nonce, encryption_key_id, status, created_at, updated_at
+`
+
+type UpsertUpstreamOIDCConnectionParams struct {
+	TenantID               pgtype.UUID `json:"tenant_id"`
+	DisplayName            string      `json:"display_name"`
+	Issuer                 string      `json:"issuer"`
+	ClientID               string      `json:"client_id"`
+	ClientSecretCiphertext []byte      `json:"client_secret_ciphertext"`
+	ClientSecretNonce      []byte      `json:"client_secret_nonce"`
+	EncryptionKeyID        string      `json:"encryption_key_id"`
+}
+
+func (q *Queries) UpsertUpstreamOIDCConnection(ctx context.Context, arg UpsertUpstreamOIDCConnectionParams) (UpstreamOidcConnection, error) {
+	row := q.db.QueryRow(ctx, upsertUpstreamOIDCConnection,
+		arg.TenantID,
+		arg.DisplayName,
+		arg.Issuer,
+		arg.ClientID,
+		arg.ClientSecretCiphertext,
+		arg.ClientSecretNonce,
+		arg.EncryptionKeyID,
 	)
 	var i UpstreamOidcConnection
 	err := row.Scan(
