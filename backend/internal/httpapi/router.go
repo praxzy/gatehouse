@@ -20,6 +20,7 @@ type Dependencies struct {
 	FederationAuthorization FederationAuthorizationStarter
 	FederationCallback      FederationAuthorizationCompleter
 	FederationManagement    FederationManagementService
+	CSRF                    *CSRFProtector
 }
 
 type healthResponse struct {
@@ -28,7 +29,11 @@ type healthResponse struct {
 
 func NewRouter(dependencies Dependencies) http.Handler {
 	router := chi.NewRouter()
+	router.Use(securityHeaders)
 	router.Use(attachRequestID)
+	if dependencies.CSRF != nil {
+		router.Use(dependencies.CSRF.CORS)
+	}
 
 	router.Get("/healthz", healthz)
 
@@ -46,10 +51,13 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		callback:      dependencies.FederationCallback,
 		sessionCookie: dependencies.SessionCookie,
 	}
-	federationManagementHandler :=
-		federationManagementHandler{
-			management: dependencies.FederationManagement,
-		}
+	federationManagementHandler := federationManagementHandler{
+		management: dependencies.FederationManagement,
+	}
+	csrfHandler := csrfHandler{
+		protector:     dependencies.CSRF,
+		sessionCookie: dependencies.SessionCookie,
+	}
 
 	if dependencies.OIDCTokens != nil {
 		router.Post(
@@ -109,6 +117,12 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		}
 
 		router.Route("/api/v1/invitations", func(router chi.Router) {
+			if dependencies.CSRF != nil {
+				router.Use(
+					dependencies.CSRF.ProtectOrigin,
+				)
+			}
+
 			router.Post(
 				"/preview",
 				handler.previewMembershipInvitation,
@@ -125,6 +139,14 @@ func NewRouter(dependencies Dependencies) http.Handler {
 				dependencies.SessionCookie,
 			))
 			router.Use(requireFullyAuthenticated)
+
+			if dependencies.CSRF != nil {
+				router.Use(
+					dependencies.CSRF.Protect(
+						dependencies.SessionCookie,
+					),
+				)
+			}
 
 			router.With(
 				requirePermission(auth.PermissionMemberRead),
@@ -266,6 +288,12 @@ func NewRouter(dependencies Dependencies) http.Handler {
 		})
 
 		router.Route("/api/v1/auth", func(router chi.Router) {
+			if dependencies.CSRF != nil {
+				router.Use(
+					dependencies.CSRF.ProtectOrigin,
+				)
+			}
+
 			router.Post("/register", handler.register)
 			router.Post("/email/verify", handler.verifyEmail)
 			router.Post("/login", handler.login)
@@ -275,6 +303,19 @@ func NewRouter(dependencies Dependencies) http.Handler {
 					dependencies.Authentication,
 					dependencies.SessionCookie,
 				))
+
+				if dependencies.CSRF != nil {
+					router.Use(
+						dependencies.CSRF.Protect(
+							dependencies.SessionCookie,
+						),
+					)
+				}
+
+				router.Get(
+					"/csrf",
+					csrfHandler.token,
+				)
 
 				router.Get("/current-user", handler.currentUser)
 				router.Post("/logout", handler.logout)

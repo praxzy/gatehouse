@@ -165,6 +165,11 @@ func run() error {
 		return err
 	}
 
+	csrfProtector, err := csrfProtectorFromEnvironment()
+	if err != nil {
+		return err
+	}
+
 	server := &http.Server{
 		Addr: address,
 		Handler: httpapi.NewRouter(
@@ -181,6 +186,7 @@ func run() error {
 				FederationAuthorization: upstreamFederation.authorization,
 				FederationCallback:      upstreamFederation.callback,
 				FederationManagement:    upstreamFederation.management,
+				CSRF:                    csrfProtector,
 			},
 		),
 		ReadHeaderTimeout: 5 * time.Second,
