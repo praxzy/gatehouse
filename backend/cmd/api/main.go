@@ -170,6 +170,14 @@ func run() error {
 		return err
 	}
 
+	rateLimiters, err := httpapi.NewDefaultRouteRateLimiters()
+	if err != nil {
+		return fmt.Errorf(
+			"create route rate limiters: %w",
+			err,
+		)
+	}
+
 	server := &http.Server{
 		Addr: address,
 		Handler: httpapi.NewRouter(
@@ -187,6 +195,7 @@ func run() error {
 				FederationCallback:      upstreamFederation.callback,
 				FederationManagement:    upstreamFederation.management,
 				CSRF:                    csrfProtector,
+				RateLimiters:            rateLimiters,
 			},
 		),
 		ReadHeaderTimeout: 5 * time.Second,

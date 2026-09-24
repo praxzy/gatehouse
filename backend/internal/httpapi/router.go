@@ -21,6 +21,7 @@ type Dependencies struct {
 	FederationCallback      FederationAuthorizationCompleter
 	FederationManagement    FederationManagementService
 	CSRF                    *CSRFProtector
+	RateLimiters            RouteRateLimiters
 }
 
 type healthResponse struct {
@@ -60,7 +61,11 @@ func NewRouter(dependencies Dependencies) http.Handler {
 	}
 
 	if dependencies.OIDCTokens != nil {
-		router.Post(
+		router.With(
+			optionalRequestRateLimit(
+				dependencies.RateLimiters.Token,
+			),
+		).Post(
 			"/oauth/token",
 			tokenHandler.exchange,
 		)
@@ -79,12 +84,20 @@ func NewRouter(dependencies Dependencies) http.Handler {
 	}
 
 	if dependencies.OIDCAuthorization != nil {
-		router.Get(
+		router.With(
+			optionalRequestRateLimit(
+				dependencies.RateLimiters.Authorize,
+			),
+		).Get(
 			"/oauth/authorize",
 			oidcHandler.authorize,
 		)
 
-		router.Get(
+		router.With(
+			optionalRequestRateLimit(
+				dependencies.RateLimiters.Authorize,
+			),
+		).Get(
 			"/oauth/authorize/continue",
 			oidcHandler.continueAuthorization,
 		)
@@ -122,6 +135,11 @@ func NewRouter(dependencies Dependencies) http.Handler {
 					dependencies.CSRF.ProtectOrigin,
 				)
 			}
+			router.Use(
+				optionalRequestRateLimit(
+					dependencies.RateLimiters.Invitations,
+				),
+			)
 
 			router.Post(
 				"/preview",
@@ -157,6 +175,9 @@ func NewRouter(dependencies Dependencies) http.Handler {
 
 			router.With(
 				requirePermission(auth.PermissionMemberManage),
+				optionalRequestRateLimit(
+					dependencies.RateLimiters.Invitations,
+				),
 			).Post(
 				"/api/v1/members",
 				handler.inviteMember,
@@ -218,6 +239,9 @@ func NewRouter(dependencies Dependencies) http.Handler {
 					requirePermission(
 						auth.PermissionApplicationManage,
 					),
+					optionalRequestRateLimit(
+						dependencies.RateLimiters.SecretManagement,
+					),
 				).Post(
 					"/api/v1/applications",
 					applicationHandler.createApplication,
@@ -257,7 +281,11 @@ func NewRouter(dependencies Dependencies) http.Handler {
 							federationManagementHandler.
 								getConnection,
 						)
-						router.Put(
+						router.With(
+							optionalRequestRateLimit(
+								dependencies.RateLimiters.SecretManagement,
+							),
+						).Put(
 							"/connection",
 							federationManagementHandler.
 								saveConnection,
@@ -319,19 +347,35 @@ func NewRouter(dependencies Dependencies) http.Handler {
 
 				router.Get("/current-user", handler.currentUser)
 				router.Post("/logout", handler.logout)
-				router.Post(
+				router.With(
+					optionalRequestRateLimit(
+						dependencies.RateLimiters.MFA,
+					),
+				).Post(
 					"/mfa/enroll",
 					handler.beginTOTPEnrollment,
 				)
-				router.Post(
+				router.With(
+					optionalRequestRateLimit(
+						dependencies.RateLimiters.MFA,
+					),
+				).Post(
 					"/mfa/enroll/confirm",
 					handler.confirmTOTPEnrollment,
 				)
-				router.Post(
+				router.With(
+					optionalRequestRateLimit(
+						dependencies.RateLimiters.MFA,
+					),
+				).Post(
 					"/mfa/challenge/totp",
 					handler.completeTOTPChallenge,
 				)
-				router.Post(
+				router.With(
+					optionalRequestRateLimit(
+						dependencies.RateLimiters.MFA,
+					),
+				).Post(
 					"/mfa/challenge/recovery",
 					handler.completeRecoveryChallenge,
 				)
