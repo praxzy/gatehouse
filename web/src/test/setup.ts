@@ -2,6 +2,8 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 
+import { setCSRFToken } from '@/api/client'
+
 class ResizeObserverMock {
   observe() {}
   unobserve() {}
@@ -43,9 +45,11 @@ if (!HTMLElement.prototype.scrollIntoView) {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+  setCSRFToken('test-csrf-token')
 })
 
 afterEach(() => {
+  setCSRFToken(null)
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
