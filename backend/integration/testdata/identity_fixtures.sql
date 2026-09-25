@@ -89,3 +89,72 @@ VALUES
         '00000000-0000-4000-8000-000000000303',
         'member.read'
     );
+
+INSERT INTO applications (
+    id,
+    tenant_id,
+    name,
+    description,
+    client_id,
+    client_type,
+    status,
+    access_mode
+)
+VALUES
+    (
+        '00000000-0000-4000-8000-000000000401',
+        '00000000-0000-4000-8000-000000000001',
+        'Alpha Employee Portal',
+        'Deterministic Alpha tenant application.',
+        'ghc_alpha000000000000000000000000000',
+        'public',
+        'active',
+        'allowed_roles'
+    ),
+    (
+        '00000000-0000-4000-8000-000000000402',
+        '00000000-0000-4000-8000-000000000002',
+        'Beta Employee Portal',
+        'Deterministic Beta tenant application.',
+        'ghc_beta0000000000000000000000000000',
+        'public',
+        'active',
+        'allowed_roles'
+    );
+
+INSERT INTO redirect_uris (
+    id,
+    tenant_id,
+    application_id,
+    uri
+)
+VALUES
+    (
+        '00000000-0000-4000-8000-000000000501',
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000401',
+        'https://alpha.example.test/oauth/callback'
+    ),
+    (
+        '00000000-0000-4000-8000-000000000502',
+        '00000000-0000-4000-8000-000000000002',
+        '00000000-0000-4000-8000-000000000402',
+        'https://beta.example.test/oauth/callback'
+    );
+
+INSERT INTO application_access (
+    tenant_id,
+    application_id,
+    role_id
+)
+VALUES
+    (
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000401',
+        '00000000-0000-4000-8000-000000000301'
+    ),
+    (
+        '00000000-0000-4000-8000-000000000002',
+        '00000000-0000-4000-8000-000000000402',
+        '00000000-0000-4000-8000-000000000303'
+    );

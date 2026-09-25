@@ -15,98 +15,164 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/praxzy/gatehouse/backend/internal/application"
+	"github.com/praxzy/gatehouse/backend/internal/audit"
+	"github.com/praxzy/gatehouse/backend/internal/auth"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
-const (
-	alphaTenantID    = "00000000-0000-4000-8000-000000000001"
-	betaTenantID     = "00000000-0000-4000-8000-000000000002"
-	betaMembershipID = "00000000-0000-4000-8000-000000000203"
-	betaRoleID       = "00000000-0000-4000-8000-000000000303"
-)
-
 func TestTenantScopedQueriesRejectForeignIDs(t *testing.T) {
-	databaseURL := os.Getenv("TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("TEST_DATABASE_URL is not set")
-	}
+	fixture := newSecurityIntegrationFixture(t)
 
-	ctx := context.Background()
-	prepareTestDatabase(t, ctx, databaseURL)
+	ctx := fixture.Context
+	queries := fixture.Queries
 
-	poolConfig, err := pgxpool.ParseConfig(databaseURL)
+	t.Run(
+		"Alpha cannot load Beta membership",
+		func(t *testing.T) {
+			_, err := queries.GetMembershipByID(
+				ctx,
+				store.GetMembershipByIDParams{
+					TenantID: fixture.Alpha.ID,
+					MembershipID: fixture.Beta.
+						Admin.MembershipID,
+				},
+			)
+
+			if !errors.Is(err, pgx.ErrNoRows) {
+				t.Fatalf(
+					"expected pgx.ErrNoRows, got %v",
+					err,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"Alpha cannot load Beta role",
+		func(t *testing.T) {
+			_, err := queries.GetRoleByID(
+				ctx,
+				store.GetRoleByIDParams{
+					TenantID: fixture.Alpha.ID,
+					RoleID: fixture.Beta.
+						Admin.RoleID,
+				},
+			)
+
+			if !errors.Is(err, pgx.ErrNoRows) {
+				t.Fatalf(
+					"expected pgx.ErrNoRows, got %v",
+					err,
+				)
+			}
+		},
+	)
+
+	applications, err := application.NewService(
+		fixture.Pool,
+		audit.NewWriter(),
+	)
 	if err != nil {
-		t.Fatalf("parse test database URL: %v", err)
-	}
-
-	if poolConfig.ConnConfig.Database != "gatehouse_test" {
 		t.Fatalf(
-			"refusing to run against non-test database %q",
-			poolConfig.ConnConfig.Database,
+			"create application service: %v",
+			err,
 		)
 	}
 
-	poolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		t.Fatalf("open test database: %v", err)
+	alphaSession := auth.SessionContext{
+		TenantID:     fixture.Alpha.ID,
+		UserID:       fixture.Alpha.Admin.UserID,
+		MembershipID: fixture.Alpha.Admin.MembershipID,
+		Permissions: []string{
+			auth.PermissionApplicationRead,
+		},
 	}
-	t.Cleanup(pool.Close)
 
-	loadFixtures(t, ctx, pool)
+	t.Run(
+		"Alpha user cannot request Beta application",
+		func(t *testing.T) {
+			_, err := applications.GetApplication(
+				ctx,
+				alphaSession,
+				fixture.Beta.Application.ID,
+			)
 
-	queries := store.New(pool)
+			if !errors.Is(
+				err,
+				application.ErrApplicationNotFound,
+			) {
+				t.Fatalf(
+					"expected application not found, got %v",
+					err,
+				)
+			}
+		},
+	)
 
-	t.Run("Alpha cannot load Beta membership", func(t *testing.T) {
-		_, err := queries.GetMembershipByID(
-			ctx,
-			store.GetMembershipByIDParams{
-				TenantID:     mustUUID(t, alphaTenantID),
-				MembershipID: mustUUID(t, betaMembershipID),
-			},
-		)
+	t.Run(
+		"Alpha lists only Alpha applications",
+		func(t *testing.T) {
+			items, err := applications.ListApplications(
+				ctx,
+				alphaSession,
+			)
+			if err != nil {
+				t.Fatalf(
+					"list Alpha applications: %v",
+					err,
+				)
+			}
 
-		if !errors.Is(err, pgx.ErrNoRows) {
-			t.Fatalf("expected pgx.ErrNoRows, got %v", err)
-		}
-	})
+			if len(items) != 1 {
+				t.Fatalf(
+					"expected one Alpha application, got %d",
+					len(items),
+				)
+			}
 
-	t.Run("Alpha cannot load Beta role", func(t *testing.T) {
-		_, err := queries.GetRoleByID(
-			ctx,
-			store.GetRoleByIDParams{
-				TenantID: mustUUID(t, alphaTenantID),
-				RoleID:   mustUUID(t, betaRoleID),
-			},
-		)
+			if items[0].ApplicationID !=
+				fixture.Alpha.Application.ID {
+				t.Fatalf(
+					"Alpha list exposed application %v",
+					items[0].ApplicationID,
+				)
+			}
+		},
+	)
 
-		if !errors.Is(err, pgx.ErrNoRows) {
-			t.Fatalf("expected pgx.ErrNoRows, got %v", err)
-		}
-	})
+	t.Run(
+		"Beta can load its own resources",
+		func(t *testing.T) {
+			if _, err := queries.GetMembershipByID(
+				ctx,
+				store.GetMembershipByIDParams{
+					TenantID: fixture.Beta.ID,
+					MembershipID: fixture.Beta.
+						Admin.MembershipID,
+				},
+			); err != nil {
+				t.Fatalf(
+					"load Beta membership: %v",
+					err,
+				)
+			}
 
-	t.Run("Beta can load its own membership and role", func(t *testing.T) {
-		if _, err := queries.GetMembershipByID(
-			ctx,
-			store.GetMembershipByIDParams{
-				TenantID:     mustUUID(t, betaTenantID),
-				MembershipID: mustUUID(t, betaMembershipID),
-			},
-		); err != nil {
-			t.Fatalf("load Beta membership: %v", err)
-		}
-
-		if _, err := queries.GetRoleByID(
-			ctx,
-			store.GetRoleByIDParams{
-				TenantID: mustUUID(t, betaTenantID),
-				RoleID:   mustUUID(t, betaRoleID),
-			},
-		); err != nil {
-			t.Fatalf("load Beta role: %v", err)
-		}
-	})
+			if _, err := queries.GetRoleByID(
+				ctx,
+				store.GetRoleByIDParams{
+					TenantID: fixture.Beta.ID,
+					RoleID: fixture.Beta.
+						Admin.RoleID,
+				},
+			); err != nil {
+				t.Fatalf(
+					"load Beta role: %v",
+					err,
+				)
+			}
+		},
+	)
 }
 
 func prepareTestDatabase(
