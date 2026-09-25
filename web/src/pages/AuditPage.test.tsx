@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { AuditPage } from '@/pages/AuditPage'
 import { renderWithProviders } from '@/test/render'
@@ -22,7 +22,7 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe('AuditPage', () => {
-  it('applies filters only after submission', async () => {
+  it('applies every audit filter only after submission', async () => {
     const requestedURLs: URL[] = []
 
     vi.stubGlobal(
@@ -30,6 +30,7 @@ describe('AuditPage', () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const path =
           typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+
         const url = new URL(path, 'http://localhost')
         requestedURLs.push(url)
 
@@ -47,21 +48,80 @@ describe('AuditPage', () => {
 
     const { user } = renderWithProviders(<AuditPage />)
 
-    expect(await screen.findByRole('heading', { name: 'session.created' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', {
+        name: 'session.created',
+      }),
+    ).toBeInTheDocument()
 
-    await user.type(screen.getByRole('textbox', { name: 'Event type' }), 'auth.login')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Outcome' }), 'failure')
+    const actorID = '11111111-1111-4111-8111-111111111111'
+    const applicationID = '22222222-2222-4222-8222-222222222222'
+    const from = '2026-09-15T09:30'
+    const until = '2026-09-16T17:45'
+
+    await user.type(
+      screen.getByRole('textbox', {
+        name: 'Actor user ID',
+      }),
+      actorID,
+    )
+
+    await user.type(
+      screen.getByRole('textbox', {
+        name: 'Application ID',
+      }),
+      applicationID,
+    )
+
+    await user.type(
+      screen.getByRole('textbox', {
+        name: 'Event type',
+      }),
+      'auth.login',
+    )
+
+    await user.selectOptions(
+      screen.getByRole('combobox', {
+        name: 'Outcome',
+      }),
+      'failure',
+    )
+
+    fireEvent.change(screen.getByLabelText('From'), {
+      target: {
+        value: from,
+      },
+    })
+
+    fireEvent.change(screen.getByLabelText('Until'), {
+      target: {
+        value: until,
+      },
+    })
 
     expect(requestedURLs).toHaveLength(1)
 
-    await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Apply filters',
+      }),
+    )
 
-    expect(await screen.findByRole('heading', { name: 'auth.login' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', {
+        name: 'auth.login',
+      }),
+    ).toBeInTheDocument()
 
     await waitFor(() => {
       const filtered = requestedURLs.at(-1)
+
+      expect(filtered?.searchParams.get('actor_user_id')).toBe(actorID)
+      expect(filtered?.searchParams.get('application_id')).toBe(applicationID)
       expect(filtered?.searchParams.get('event_type')).toBe('auth.login')
       expect(filtered?.searchParams.get('outcome')).toBe('failure')
+      expect(filtered?.searchParams.get('from')).toBe(new Date(from).toISOString())
+      expect(filtered?.searchParams.get('until')).toBe(new Date(until).toISOString())
       expect(filtered?.searchParams.get('page_size')).toBe('25')
     })
   })

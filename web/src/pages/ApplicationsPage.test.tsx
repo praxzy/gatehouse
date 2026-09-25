@@ -124,9 +124,131 @@ describe('ApplicationsPage', () => {
       expect(screen.queryByText('ghs_one_time_secret')).not.toBeInTheDocument()
     })
   })
+
+  it('rejects an unsafe redirect URI before sending the request', async () => {
+    const fetchMock = createApplicationsFetchMock({
+      applications: [],
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { user } = renderWithProviders(<ApplicationsPage />, {
+      route: '/app/applications',
+    })
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Create application',
+      }),
+    )
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Create application',
+    })
+
+    await user.type(
+      within(dialog).getByRole('textbox', {
+        name: 'Application name',
+      }),
+      'Unsafe Portal',
+    )
+
+    await user.type(
+      within(dialog).getByRole('textbox', {
+        name: 'Redirect URI 1',
+      }),
+      'http://attacker.example.test/callback',
+    )
+
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'Create application',
+      }),
+    )
+
+    expect(await within(dialog).findByText('Use HTTPS, or HTTP with localhost')).toBeInTheDocument()
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, options]) => input === '/api/v1/applications' && options?.method === 'POST',
+      ),
+    ).toBe(false)
+  })
+
+  it('keeps the form open when application creation is forbidden', async () => {
+    const fetchMock = createApplicationsFetchMock(
+      {
+        applications: [],
+      },
+      {
+        error: 'You do not have permission to create applications',
+        request_id: 'request-application-forbidden',
+        status: 403,
+      },
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { user } = renderWithProviders(<ApplicationsPage />, {
+      route: '/app/applications',
+    })
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Create application',
+      }),
+    )
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Create application',
+    })
+
+    await user.type(
+      within(dialog).getByRole('textbox', {
+        name: 'Application name',
+      }),
+      'Employee Portal',
+    )
+
+    await user.type(
+      within(dialog).getByRole('textbox', {
+        name: 'Redirect URI 1',
+      }),
+      'https://portal.example.test/callback',
+    )
+
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'Create application',
+      }),
+    )
+
+    expect(
+      await within(dialog).findByText('You do not have permission to create applications'),
+    ).toBeInTheDocument()
+
+    expect(
+      within(dialog).getByText('Request ID: request-application-forbidden'),
+    ).toBeInTheDocument()
+
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Application created',
+      }),
+    ).not.toBeInTheDocument()
+
+    expect(screen.getByRole('dialog', { name: 'Create application' })).toBeInTheDocument()
+  })
 })
 
-function createApplicationsFetchMock(listResponse: { applications: unknown[] }) {
+function createApplicationsFetchMock(
+  listResponse: { applications: unknown[] },
+  createFailure?: {
+    error: string
+    request_id?: string
+    status: number
+  },
+) {
   return vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
     const path =
       typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
@@ -164,6 +286,16 @@ function createApplicationsFetchMock(listResponse: { applications: unknown[] }) 
     }
 
     if (path === '/api/v1/applications' && method === 'POST') {
+      if (createFailure) {
+        return jsonResponse(
+          {
+            error: createFailure.error,
+            request_id: createFailure.request_id,
+          },
+          createFailure.status,
+        )
+      }
+
       return jsonResponse(
         {
           application: {
