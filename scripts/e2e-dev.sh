@@ -66,6 +66,11 @@ export MFA_ENCRYPTION_KEY_ID="e2e-v1"
 export MFA_ENCRYPTION_KEY_BASE64
 MFA_ENCRYPTION_KEY_BASE64="$(openssl rand -base64 32 | tr -d '\n')"
 
+export CSRF_HMAC_KEY_BASE64
+CSRF_HMAC_KEY_BASE64="$(openssl rand -base64 32 | tr -d '\n')"
+
+export ADMIN_ALLOWED_ORIGINS="http://localhost:5173"
+
 export EMAIL_DELIVERY_MODE="log"
 export WEB_APP_URL="http://localhost:5173"
 

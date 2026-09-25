@@ -1,4 +1,4 @@
-.PHONY: dev api web portal audit-export-worker db-up test-db-up migrate test check generate stop
+.PHONY: dev api web portal audit-export-worker db-up test-db-up migrate test test-e2e check generate stop
 
 dev:
 	@./scripts/dev.sh
@@ -28,6 +28,9 @@ test: test-db-up
 	@bash -c 'set -a; source .env; set +a; cd backend; go test ./...'
 	@cd web && pnpm test
 	@cd examples/employee-portal && go test ./...
+
+test-e2e:
+	@cd web && pnpm test:e2e
 
 check: test-db-up
 	@bash -c 'set -a; source .env; set +a; cd backend; go test ./...'

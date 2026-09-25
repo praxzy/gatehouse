@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/praxzy/gatehouse/backend/internal/application"
@@ -36,8 +39,17 @@ const (
 	viewerRoleID = "15000000-0000-4000-8000-000000000011"
 
 	employeePortalApplicationID = "15000000-0000-4000-8000-000000000012"
+	expiredInvitationID         = "15000000-0000-4000-8000-000000000013"
+	revokedSessionUserID        = "15000000-0000-4000-8000-000000000014"
+	revokedSessionMembershipID  = "15000000-0000-4000-8000-000000000015"
+	mfaTenantID                 = "15000000-0000-4000-8000-000000000016"
+	mfaUserID                   = "15000000-0000-4000-8000-000000000017"
+	mfaMembershipID             = "15000000-0000-4000-8000-000000000018"
+	mfaOwnerRoleID              = "15000000-0000-4000-8000-000000000019"
 
 	employeePortalRedirectURI = "http://localhost:8090/oauth/callback"
+	expiredInvitationToken    = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA"
+	e2eTOTPSecret             = "01234567890123456789"
 )
 
 type statement struct {
@@ -66,6 +78,60 @@ func run(ctx context.Context) error {
 	clientSecretHash := application.HashClientSecret(
 		employeePortalClientSecret,
 	)
+
+	expiredInvitationTokenBytes, err :=
+		base64.RawURLEncoding.DecodeString(
+			expiredInvitationToken,
+		)
+	if err != nil ||
+		len(expiredInvitationTokenBytes) != 32 {
+		return errors.New(
+			"expired invitation fixture token is invalid",
+		)
+	}
+
+	expiredInvitationTokenHash :=
+		sha256.Sum256(expiredInvitationTokenBytes)
+
+	mfaEncryptionKey, err := base64.StdEncoding.DecodeString(
+		os.Getenv("MFA_ENCRYPTION_KEY_BASE64"),
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"decode E2E MFA encryption key: %w",
+			err,
+		)
+	}
+
+	mfaSecretCipher, err := auth.NewAESGCMSecretCipher(
+		os.Getenv("MFA_ENCRYPTION_KEY_ID"),
+		mfaEncryptionKey,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"create E2E MFA secret cipher: %w",
+			err,
+		)
+	}
+
+	var mfaUserUUID pgtype.UUID
+	if err := mfaUserUUID.Scan(mfaUserID); err != nil {
+		return fmt.Errorf(
+			"parse E2E MFA user ID: %w",
+			err,
+		)
+	}
+
+	encryptedTOTPSecret, err := mfaSecretCipher.Encrypt(
+		mfaUserUUID,
+		[]byte(e2eTOTPSecret),
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"encrypt E2E TOTP secret: %w",
+			err,
+		)
+	}
 
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -264,6 +330,75 @@ func run(ctx context.Context) error {
 			},
 		},
 		{
+			name: "revoked-session user",
+			query: `
+				INSERT INTO users (
+					id,
+					email,
+					display_name,
+					status,
+					email_verified_at
+				)
+				VALUES (
+					$1,
+					'riley@northstar.test',
+					'Riley Session',
+					'active',
+					now()
+				)
+			`,
+			args: []any{
+				revokedSessionUserID,
+			},
+		},
+		{
+			name: "revoked-session password",
+			query: `
+				INSERT INTO password_credentials (
+					user_id,
+					password_hash
+				)
+				VALUES ($1, $2)
+			`,
+			args: []any{
+				revokedSessionUserID,
+				passwordHash,
+			},
+		},
+		{
+			name: "revoked-session membership",
+			query: `
+				INSERT INTO memberships (
+					id,
+					tenant_id,
+					user_id,
+					status
+				)
+				VALUES ($1, $2, $3, 'active')
+			`,
+			args: []any{
+				revokedSessionMembershipID,
+				tenantID,
+				revokedSessionUserID,
+			},
+		},
+		{
+			name: "revoked-session membership role",
+			query: `
+				INSERT INTO membership_roles (
+					tenant_id,
+					membership_id,
+					role_id
+				)
+				VALUES ($1, $2, $3)
+			`,
+			args: []any{
+				tenantID,
+				revokedSessionMembershipID,
+				viewerRoleID,
+			},
+		},
+		{
 			name: "employee portal application",
 			query: `
 				INSERT INTO applications (
@@ -328,6 +463,190 @@ func run(ctx context.Context) error {
 				tenantID,
 				employeePortalApplicationID,
 				adminRoleID,
+			},
+		},
+		{
+			name: "expired membership invitation",
+			query: `
+				INSERT INTO membership_invitations (
+					id,
+					tenant_id,
+					email,
+					role_id,
+					invited_by_membership_id,
+					token_hash,
+					created_at,
+					updated_at,
+					expires_at
+				)
+				VALUES (
+					$1,
+					$2,
+					'expired.invitee@northstar.test',
+					$3,
+					$4,
+					$5,
+					now() - interval '2 hours',
+					now() - interval '2 hours',
+					now() - interval '1 hour'
+				)
+			`,
+			args: []any{
+				expiredInvitationID,
+				tenantID,
+				memberRoleID,
+				aliceMembershipID,
+				expiredInvitationTokenHash[:],
+			},
+		},
+		{
+			name: "MFA tenant",
+			query: `
+				INSERT INTO tenants (
+					id,
+					name,
+					slug,
+					status,
+					mfa_required
+				)
+				VALUES (
+					$1,
+					'MFA Laboratory',
+					'mfa-lab',
+					'active',
+					true
+				)
+			`,
+			args: []any{mfaTenantID},
+		},
+		{
+			name: "MFA user",
+			query: `
+				INSERT INTO users (
+					id,
+					email,
+					display_name,
+					status,
+					email_verified_at
+				)
+				VALUES (
+					$1,
+					'morgan@mfa.test',
+					'Morgan MFA',
+					'active',
+					now()
+				)
+			`,
+			args: []any{mfaUserID},
+		},
+		{
+			name: "MFA password",
+			query: `
+				INSERT INTO password_credentials (
+					user_id,
+					password_hash
+				)
+				VALUES ($1, $2)
+			`,
+			args: []any{mfaUserID, passwordHash},
+		},
+		{
+			name: "MFA membership",
+			query: `
+				INSERT INTO memberships (
+					id,
+					tenant_id,
+					user_id,
+					status
+				)
+				VALUES ($1, $2, $3, 'active')
+			`,
+			args: []any{
+				mfaMembershipID,
+				mfaTenantID,
+				mfaUserID,
+			},
+		},
+		{
+			name: "MFA owner role",
+			query: `
+				INSERT INTO roles (
+					id,
+					tenant_id,
+					role_key,
+					name,
+					description,
+					is_system
+				)
+				VALUES (
+					$1,
+					$2,
+					'owner',
+					'Owner',
+					'Full organization access.',
+					true
+				)
+			`,
+			args: []any{mfaOwnerRoleID, mfaTenantID},
+		},
+		{
+			name: "MFA owner permissions",
+			query: `
+				INSERT INTO role_permissions (
+					tenant_id,
+					role_id,
+					permission
+				)
+				SELECT $1, $2, permission
+				FROM permission_catalog
+			`,
+			args: []any{mfaTenantID, mfaOwnerRoleID},
+		},
+		{
+			name: "MFA membership role",
+			query: `
+				INSERT INTO membership_roles (
+					tenant_id,
+					membership_id,
+					role_id
+				)
+				VALUES ($1, $2, $3)
+			`,
+			args: []any{
+				mfaTenantID,
+				mfaMembershipID,
+				mfaOwnerRoleID,
+			},
+		},
+		{
+			name: "active MFA credential",
+			query: `
+				INSERT INTO totp_credentials (
+					user_id,
+					secret_ciphertext,
+					secret_nonce,
+					encryption_key_id,
+					status,
+					last_accepted_timestep,
+					confirmed_at,
+					enrollment_expires_at
+				)
+				VALUES (
+					$1,
+					$2,
+					$3,
+					$4,
+					'active',
+					0,
+					now(),
+					NULL
+				)
+			`,
+			args: []any{
+				mfaUserID,
+				encryptedTOTPSecret.Ciphertext,
+				encryptedTOTPSecret.Nonce,
+				encryptedTOTPSecret.KeyID,
 			},
 		},
 	}
