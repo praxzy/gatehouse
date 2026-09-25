@@ -1152,6 +1152,63 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 		},
 	)
 
+	t.Run(
+		"revoked SSO session requires reauthentication",
+		func(t *testing.T) {
+			session, err := authentication.ResolveSession(
+				ctx,
+				ownerMFACookie.Value,
+			)
+			if err != nil {
+				t.Fatalf(
+					"resolve owner session before revocation: %v",
+					err,
+				)
+			}
+
+			if err := authentication.RevokeSession(
+				ctx,
+				session,
+				"security integration test",
+			); err != nil {
+				t.Fatalf(
+					"revoke owner session: %v",
+					err,
+				)
+			}
+
+			const revokedState =
+				"revoked-session-state-0123456789"
+
+			response := performRequest(
+				t,
+				router,
+				http.MethodGet,
+				authorizationRequestTarget(
+					map[string]string{
+						"state": revokedState,
+						"nonce": "revoked-session-nonce-0123456789",
+					},
+				),
+				nil,
+				ownerMFACookie,
+			)
+
+			continuation :=
+				requireAuthorizationFlowRedirect(
+					t,
+					response,
+					"/login",
+				)
+
+			if continuation == "" {
+				t.Fatal(
+					"login redirect did not preserve authorization continuation",
+				)
+			}
+		},
+	)
+
 	assertDatabaseCount(
 		t,
 		ctx,
