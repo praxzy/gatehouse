@@ -8,6 +8,7 @@
 *.key
 *.p12
 *.pfx
+!backend/integration/testdata/oidc_signing_key.pem
 
 # Go
 bin/

@@ -3,18 +3,16 @@ package integration_test
 import (
 	"context"
 	"crypto"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -855,34 +853,19 @@ func newTokenTestProvider(
 ) *oidc.Provider {
 	t.Helper()
 
-	privateKey, err := rsa.GenerateKey(
-		rand.Reader,
-		2048,
+	encodedPrivateKey, err := os.ReadFile(
+		"testdata/oidc_signing_key.pem",
 	)
 	if err != nil {
 		t.Fatalf(
-			"generate token signing key: %v",
-			err,
-		)
-	}
-
-	encodedPrivateKey, err :=
-		x509.MarshalPKCS8PrivateKey(privateKey)
-	if err != nil {
-		t.Fatalf(
-			"encode token signing key: %v",
+			"load test OIDC signing key: %v",
 			err,
 		)
 	}
 
 	signingKey, err := oidc.ParseRSAPrivateKeyPEM(
 		"token-test-key",
-		pem.EncodeToMemory(
-			&pem.Block{
-				Type:  "PRIVATE KEY",
-				Bytes: encodedPrivateKey,
-			},
-		),
+		encodedPrivateKey,
 	)
 	if err != nil {
 		t.Fatalf(
