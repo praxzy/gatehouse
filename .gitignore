@@ -25,6 +25,12 @@ coverage/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 crash.log
 
 # IDE / OS
