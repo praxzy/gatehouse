@@ -1,0 +1,10 @@
+aws_region = "ap-south-1"
+
+availability_zones = [
+  "ap-south-1a",
+  "ap-south-1b",
+]
+
+additional_tags = {
+  Owner = "gatehouse-platform"
+}
