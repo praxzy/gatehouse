@@ -38,3 +38,52 @@ module "network_rds" {
 
   tags = var.additional_tags
 }
+
+module "audit_exports" {
+  source = "../../modules/audit-exports"
+
+  project_name = "gatehouse"
+  environment  = "dev"
+
+  export_retention_days      = 30
+  message_retention_seconds  = 1209600
+  visibility_timeout_seconds = 90
+  max_receive_count          = 5
+
+  tags = var.additional_tags
+}
+
+module "ecs_runtime" {
+  source = "../../modules/ecs-runtime"
+
+  project_name = "gatehouse"
+  environment  = "dev"
+  aws_region   = var.aws_region
+
+  vpc_id                        = module.network_rds.vpc_id
+  public_subnet_ids             = toset(values(module.network_rds.public_subnet_ids))
+  application_subnet_ids        = toset(values(module.network_rds.application_subnet_ids))
+  application_security_group_id = module.network_rds.application_security_group_id
+
+  audit_export_queue_url   = module.audit_exports.queue_url
+  audit_export_queue_arn   = module.audit_exports.queue_arn
+  audit_export_bucket_name = module.audit_exports.bucket_name
+  audit_export_bucket_arn  = module.audit_exports.bucket_arn
+
+  web_app_url           = var.web_app_url
+  oidc_issuer           = var.oidc_issuer
+  admin_allowed_origins = var.admin_allowed_origins
+  certificate_arn       = var.certificate_arn
+
+  api_desired_count    = var.api_desired_count
+  worker_desired_count = var.worker_desired_count
+  api_image_tag        = var.api_image_tag
+  worker_image_tag     = var.worker_image_tag
+
+  enable_load_balancer_deletion_protection = false
+  force_delete_ecr_repositories            = true
+  log_retention_days                       = 7
+  secret_recovery_window_days              = 0
+
+  tags = var.additional_tags
+}

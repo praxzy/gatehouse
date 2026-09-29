@@ -8,3 +8,22 @@ availability_zones = [
 additional_tags = {
   Owner = "gatehouse-platform"
 }
+
+# replace before deployment
+web_app_url = "https://admin.example.com"
+oidc_issuer = "https://auth.example.com"
+
+admin_allowed_origins = [
+  "https://admin.example.com",
+]
+
+# replace with an ACM certificate
+certificate_arn = "arn:aws:acm:ap-south-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+
+# a real deployment could use 2 API tasks and 1 worker task initially
+api_desired_count    = 0
+worker_desired_count = 0
+
+# replace bootstrap with an immutable release identifier or commit SHA
+api_image_tag    = "bootstrap"
+worker_image_tag = "bootstrap"

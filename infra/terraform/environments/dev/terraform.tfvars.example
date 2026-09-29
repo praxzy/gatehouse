@@ -8,3 +8,18 @@ availability_zones = [
 additional_tags = {
   Owner = "gatehouse-platform"
 }
+
+web_app_url = "http://localhost:5173"
+oidc_issuer = "http://localhost:8080"
+
+admin_allowed_origins = [
+  "http://localhost:5173",
+]
+
+certificate_arn = null
+
+api_desired_count    = 0
+worker_desired_count = 0
+
+api_image_tag    = "bootstrap"
+worker_image_tag = "bootstrap"

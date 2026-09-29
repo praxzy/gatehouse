@@ -45,15 +45,21 @@ check: test-db-up
 
 terraform-init:
 	@terraform -chdir=infra/terraform/modules/network-rds init -backend=false -input=false
-	@terraform -chdir=infra/terraform/environments/dev init -input=false
-	@terraform -chdir=infra/terraform/environments/prod init -input=false
+	@terraform -chdir=infra/terraform/modules/audit-exports init -backend=false -input=false
+	@terraform -chdir=infra/terraform/modules/ecs-runtime init -backend=false -input=false
+	@terraform -chdir=infra/terraform/environments/dev init -backend=false -input=false
+	@terraform -chdir=infra/terraform/environments/prod init -backend=false -input=false
 
 terraform-check: terraform-init
 	@terraform fmt -check -recursive infra/terraform
 	@terraform -chdir=infra/terraform/modules/network-rds validate
+	@terraform -chdir=infra/terraform/modules/audit-exports validate
+	@terraform -chdir=infra/terraform/modules/ecs-runtime validate
 	@terraform -chdir=infra/terraform/environments/dev validate
 	@terraform -chdir=infra/terraform/environments/prod validate
 	@terraform -chdir=infra/terraform/modules/network-rds test
+	@terraform -chdir=infra/terraform/modules/audit-exports test
+	@terraform -chdir=infra/terraform/modules/ecs-runtime test
 
 generate:
 	@cd backend && go tool sqlc generate
