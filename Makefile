@@ -44,6 +44,7 @@ check: test-db-up
 	@cd examples/employee-portal && go vet ./...
 
 terraform-init:
+	@terraform -chdir=infra/terraform/bootstrap init -backend=false -input=false
 	@terraform -chdir=infra/terraform/modules/network-rds init -backend=false -input=false
 	@terraform -chdir=infra/terraform/modules/audit-exports init -backend=false -input=false
 	@terraform -chdir=infra/terraform/modules/ecs-runtime init -backend=false -input=false
@@ -52,11 +53,13 @@ terraform-init:
 
 terraform-check: terraform-init
 	@terraform fmt -check -recursive infra/terraform
+	@terraform -chdir=infra/terraform/bootstrap validate
 	@terraform -chdir=infra/terraform/modules/network-rds validate
 	@terraform -chdir=infra/terraform/modules/audit-exports validate
 	@terraform -chdir=infra/terraform/modules/ecs-runtime validate
 	@terraform -chdir=infra/terraform/environments/dev validate
 	@terraform -chdir=infra/terraform/environments/prod validate
+	@terraform -chdir=infra/terraform/bootstrap test
 	@terraform -chdir=infra/terraform/modules/network-rds test
 	@terraform -chdir=infra/terraform/modules/audit-exports test
 	@terraform -chdir=infra/terraform/modules/ecs-runtime test

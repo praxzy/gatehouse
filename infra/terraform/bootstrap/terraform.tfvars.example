@@ -1,0 +1,13 @@
+aws_region        = "ap-south-1"
+state_bucket_name = "replace-with-a-globally-unique-gatehouse-state-bucket"
+
+github_repository = "praxzy/gatehouse"
+github_environment = "production"
+
+# set this to false if the AWS account already has the github actions
+# OIDC provider at https://token.actions.githubusercontent.com
+create_github_oidc_provider = true
+
+additional_tags = {
+  Owner = "replace-me"
+}
