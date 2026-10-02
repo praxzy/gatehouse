@@ -1,0 +1,7 @@
+.local/
+*.pem
+*.key
+*.log
+coverage/
+test-results/
+tmp/
