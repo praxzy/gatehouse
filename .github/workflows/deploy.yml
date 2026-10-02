@@ -1,0 +1,276 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Confirm the protected production deployment
+        required: true
+        type: choice
+        options:
+          - deploy-production
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy immutable release
+    if: inputs.confirmation == 'deploy-production'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment:
+      name: production
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      TERRAFORM_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+      GATEHOUSE_WEB_APP_URL: ${{ vars.GATEHOUSE_WEB_APP_URL }}
+      GATEHOUSE_OIDC_ISSUER: ${{ vars.GATEHOUSE_OIDC_ISSUER }}
+      GATEHOUSE_ADMIN_ORIGIN: ${{ vars.GATEHOUSE_ADMIN_ORIGIN }}
+      GATEHOUSE_CERTIFICATE_ARN: ${{ vars.GATEHOUSE_CERTIFICATE_ARN }}
+      GATEHOUSE_SMOKE_URL: ${{ vars.GATEHOUSE_SMOKE_URL }}
+      API_DESIRED_COUNT: ${{ vars.API_DESIRED_COUNT }}
+      WORKER_DESIRED_COUNT: ${{ vars.WORKER_DESIRED_COUNT }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_ROOT: infra/terraform/environments/prod
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Validate protected deployment configuration
+        run: |
+          required_values=(
+            AWS_REGION
+            AWS_DEPLOY_ROLE_ARN
+            TERRAFORM_STATE_BUCKET
+            GATEHOUSE_WEB_APP_URL
+            GATEHOUSE_OIDC_ISSUER
+            GATEHOUSE_ADMIN_ORIGIN
+            GATEHOUSE_CERTIFICATE_ARN
+            GATEHOUSE_SMOKE_URL
+            API_DESIRED_COUNT
+            WORKER_DESIRED_COUNT
+          )
+
+          for variable_name in "${required_values[@]}"; do
+            if [[ -z "${!variable_name}" ]]; then
+              echo "::error::GitHub production environment variable ${variable_name} is required"
+              exit 1
+            fi
+          done
+
+          if [[ ! "$API_DESIRED_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::API_DESIRED_COUNT must be at least 1"
+            exit 1
+          fi
+
+          if [[ ! "$WORKER_DESIRED_COUNT" =~ ^[0-9]+$ ]]; then
+            echo "::error::WORKER_DESIRED_COUNT must be zero or a positive integer"
+            exit 1
+          fi
+
+          echo "TF_VAR_aws_region=$AWS_REGION" >> "$GITHUB_ENV"
+          echo "TF_VAR_web_app_url=$GATEHOUSE_WEB_APP_URL" >> "$GITHUB_ENV"
+          echo "TF_VAR_oidc_issuer=$GATEHOUSE_OIDC_ISSUER" >> "$GITHUB_ENV"
+          echo "TF_VAR_certificate_arn=$GATEHOUSE_CERTIFICATE_ARN" >> "$GITHUB_ENV"
+          echo "TF_VAR_api_desired_count=$API_DESIRED_COUNT" >> "$GITHUB_ENV"
+          echo "TF_VAR_worker_desired_count=$WORKER_DESIRED_COUNT" >> "$GITHUB_ENV"
+          echo "TF_VAR_api_image_tag=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "TF_VAR_worker_image_tag=$GITHUB_SHA" >> "$GITHUB_ENV"
+
+          admin_origins=$(jq -cn --arg origin "$GATEHOUSE_ADMIN_ORIGIN" '[ $origin ]')
+          echo "TF_VAR_admin_allowed_origins=$admin_origins" >> "$GITHUB_ENV"
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gatehouse-${{ github.run_id }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
+
+      - name: Configure Terraform provider cache
+        run: |
+          mkdir -p "$RUNNER_TEMP/terraform-plugin-cache"
+          echo "TF_PLUGIN_CACHE_DIR=$RUNNER_TEMP/terraform-plugin-cache" >> "$GITHUB_ENV"
+
+      - name: Initialize remote production state
+        run: |
+          terraform -chdir="$TF_ROOT" init \
+            -input=false \
+            -reconfigure \
+            -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
+            -backend-config="key=gatehouse/prod/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+
+      - name: Load provisioned runtime coordinates
+        id: runtime
+        run: |
+          echo "cluster=$(terraform -chdir="$TF_ROOT" output -raw ecs_cluster_name)" >> "$GITHUB_OUTPUT"
+          echo "api_service=$(terraform -chdir="$TF_ROOT" output -raw api_service_name)" >> "$GITHUB_OUTPUT"
+          echo "worker_service=$(terraform -chdir="$TF_ROOT" output -raw worker_service_name)" >> "$GITHUB_OUTPUT"
+          echo "api_repository=$(terraform -chdir="$TF_ROOT" output -raw api_repository_url)" >> "$GITHUB_OUTPUT"
+          echo "worker_repository=$(terraform -chdir="$TF_ROOT" output -raw worker_repository_url)" >> "$GITHUB_OUTPUT"
+
+      - name: Capture rollback task definitions
+        id: rollback
+        env:
+          ECS_CLUSTER: ${{ steps.runtime.outputs.cluster }}
+          API_SERVICE: ${{ steps.runtime.outputs.api_service }}
+          WORKER_SERVICE: ${{ steps.runtime.outputs.worker_service }}
+        run: |
+          api_task_definition=$(
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$API_SERVICE" \
+              --query 'services[0].taskDefinition' \
+              --output text
+          )
+
+          worker_task_definition=$(
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$WORKER_SERVICE" \
+              --query 'services[0].taskDefinition' \
+              --output text
+          )
+
+          if [[ "$api_task_definition" == "None" || "$worker_task_definition" == "None" ]]; then
+            echo "::error::Production ECS services must be provisioned before application deployment"
+            exit 1
+          fi
+
+          echo "api_task_definition=$api_task_definition" >> "$GITHUB_OUTPUT"
+          echo "worker_task_definition=$worker_task_definition" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      - name: Build and push immutable images
+        env:
+          API_REPOSITORY: ${{ steps.runtime.outputs.api_repository }}
+          WORKER_REPOSITORY: ${{ steps.runtime.outputs.worker_repository }}
+        run: |
+          push_image_if_missing() {
+            target=$1
+            repository_url=$2
+            repository_name=${repository_url#*/}
+
+            if aws ecr describe-images \
+              --repository-name "$repository_name" \
+              --image-ids "imageTag=$GITHUB_SHA" \
+              >/dev/null 2>&1
+            then
+              echo "Image $repository_url:$GITHUB_SHA already exists; reusing it"
+              return
+            fi
+
+            docker build \
+              --target "$target" \
+              --tag "$repository_url:$GITHUB_SHA" \
+              backend
+
+            docker push "$repository_url:$GITHUB_SHA"
+          }
+
+          push_image_if_missing api "$API_REPOSITORY"
+          push_image_if_missing audit-export-worker "$WORKER_REPOSITORY"
+
+      - name: Plan production release
+        run: |
+          terraform -chdir="$TF_ROOT" plan \
+            -input=false \
+            -out="$RUNNER_TEMP/production.tfplan"
+
+      - name: Apply production release
+        run: |
+          terraform -chdir="$TF_ROOT" apply \
+            -input=false \
+            -auto-approve \
+            "$RUNNER_TEMP/production.tfplan"
+
+      - name: Wait for ECS services
+        env:
+          ECS_CLUSTER: ${{ steps.runtime.outputs.cluster }}
+          API_SERVICE: ${{ steps.runtime.outputs.api_service }}
+          WORKER_SERVICE: ${{ steps.runtime.outputs.worker_service }}
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$API_SERVICE" "$WORKER_SERVICE"
+
+      - name: Smoke test deployed API
+        run: |
+          health_url="${GATEHOUSE_SMOKE_URL%/}/healthz"
+          health_payload=$(
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --retry 5 \
+              --retry-all-errors \
+              --retry-delay 5 \
+              --max-time 15 \
+              "$health_url"
+          )
+
+          jq -e '.status == "ok"' <<< "$health_payload"
+
+      - name: Roll back ECS services after deployment failure
+        if: failure() && steps.rollback.outcome == 'success'
+        env:
+          ECS_CLUSTER: ${{ steps.runtime.outputs.cluster }}
+          API_SERVICE: ${{ steps.runtime.outputs.api_service }}
+          WORKER_SERVICE: ${{ steps.runtime.outputs.worker_service }}
+          PREVIOUS_API_TASK_DEFINITION: ${{ steps.rollback.outputs.api_task_definition }}
+          PREVIOUS_WORKER_TASK_DEFINITION: ${{ steps.rollback.outputs.worker_task_definition }}
+        run: |
+          echo "Deployment or smoke test failed; restoring the previous ECS task definitions"
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$API_SERVICE" \
+            --task-definition "$PREVIOUS_API_TASK_DEFINITION" \
+            --force-new-deployment \
+            >/dev/null
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$WORKER_SERVICE" \
+            --task-definition "$PREVIOUS_WORKER_TASK_DEFINITION" \
+            --force-new-deployment \
+            >/dev/null
+
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$API_SERVICE" "$WORKER_SERVICE"
+
+          echo "::warning::ECS was restored to the previous task definitions. If Terraform apply completed, review and reconcile the resulting state drift before the next deployment."
+
+      - name: Write deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Gatehouse production deployment"
+            echo
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Environment: production"
+            echo "- Images use the immutable Git commit SHA"
+            echo "- Failed deployments restore the previously running ECS task definitions"
+          } >> "$GITHUB_STEP_SUMMARY"
