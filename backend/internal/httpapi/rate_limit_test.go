@@ -258,3 +258,19 @@ func TestRouterRateLimitsTokenEndpoint(
 		t.Fatal("rate-limited request reached token service")
 	}
 }
+
+func TestDefaultRouteRateLimitersCoverPublicResourceWork(
+	t *testing.T,
+) {
+	limiters, err := NewDefaultRouteRateLimiters()
+	if err != nil {
+		t.Fatalf("create default route limiters: %v", err)
+	}
+
+	if limiters.Registration == nil {
+		t.Fatal("registration rate limiter is not configured")
+	}
+	if limiters.Federation == nil {
+		t.Fatal("federation rate limiter is not configured")
+	}
+}

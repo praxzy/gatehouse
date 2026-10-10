@@ -29,17 +29,27 @@ type RequestRateLimiter interface {
 }
 
 type RouteRateLimiters struct {
+	Registration     *LocalRequestRateLimiter
 	MFA              *LocalRequestRateLimiter
 	Authorize        *LocalRequestRateLimiter
 	Token            *LocalRequestRateLimiter
 	Invitations      *LocalRequestRateLimiter
 	SecretManagement *LocalRequestRateLimiter
+	Federation       *LocalRequestRateLimiter
 }
 
 func NewDefaultRouteRateLimiters() (
 	RouteRateLimiters,
 	error,
 ) {
+	registration, err := NewLocalRequestRateLimiter(
+		5,
+		time.Hour,
+	)
+	if err != nil {
+		return RouteRateLimiters{}, err
+	}
+
 	mfa, err := NewLocalRequestRateLimiter(
 		10,
 		5*time.Minute,
@@ -80,12 +90,22 @@ func NewDefaultRouteRateLimiters() (
 		return RouteRateLimiters{}, err
 	}
 
+	federation, err := NewLocalRequestRateLimiter(
+		30,
+		time.Minute,
+	)
+	if err != nil {
+		return RouteRateLimiters{}, err
+	}
+
 	return RouteRateLimiters{
+		Registration:     registration,
 		MFA:              mfa,
 		Authorize:        authorize,
 		Token:            token,
 		Invitations:      invitations,
 		SecretManagement: secretManagement,
+		Federation:       federation,
 	}, nil
 }
 

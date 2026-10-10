@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"testing"
@@ -102,8 +103,10 @@ func TestSecureAuthorizationRequestLifecycle(
 		)
 	}
 
+	var requestLogs bytes.Buffer
 	router := httpapi.NewRouter(
 		httpapi.Dependencies{
+			Logger:            slog.New(slog.NewJSONHandler(&requestLogs, nil)),
 			OIDCAuthorization: authorization,
 		},
 	)
@@ -224,6 +227,7 @@ func TestSecureAuthorizationRequestLifecycle(
 	)
 
 	var transactionID pgtype.UUID
+	var tracedRequestID string
 
 	t.Run(
 		"valid request persists short-lived transaction",
@@ -242,6 +246,11 @@ func TestSecureAuthorizationRequestLifecycle(
 				response,
 				http.StatusFound,
 			)
+
+			tracedRequestID = response.Header.Get("X-Request-ID")
+			if tracedRequestID == "" {
+				t.Fatal("authorization response has no request ID")
+			}
 
 			loginLocation := response.Header.Get("Location")
 			if loginLocation == "" {
@@ -554,6 +563,73 @@ func TestSecureAuthorizationRequestLifecycle(
 		registration.TenantID,
 		applicationID,
 	)
+
+	assertDatabaseCount(
+		t,
+		ctx,
+		pool,
+		`
+			SELECT count(*)
+			FROM audit_events
+			WHERE tenant_id = $1
+			  AND application_id = $2
+			  AND request_id = $3
+			  AND event_type = 'authorization.request'
+			  AND outcome = 'success'
+		`,
+		1,
+		registration.TenantID,
+		applicationID,
+		tracedRequestID,
+	)
+
+	assertAuthorizationRequestLog(
+		t,
+		requestLogs.Bytes(),
+		tracedRequestID,
+		registration.TenantID,
+		applicationID,
+	)
+}
+
+func assertAuthorizationRequestLog(
+	t *testing.T,
+	logs []byte,
+	requestID string,
+	tenantID pgtype.UUID,
+	applicationID pgtype.UUID,
+) {
+	t.Helper()
+
+	for _, line := range bytes.Split(bytes.TrimSpace(logs), []byte("\n")) {
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatalf("decode structured request log: %v", err)
+		}
+		if entry["request_id"] != requestID {
+			continue
+		}
+
+		if entry["route"] != "/oauth/authorize" ||
+			entry["status"] != float64(http.StatusFound) ||
+			entry["tenant_id"] != uuid.UUID(tenantID.Bytes).String() ||
+			entry["application_id"] != uuid.UUID(applicationID.Bytes).String() {
+			t.Fatalf("unexpected authorization request log: %#v", entry)
+		}
+
+		for _, secret := range []string{
+			testAuthorizationState,
+			testAuthorizationNonce,
+			testAuthorizationPKCE,
+		} {
+			if bytes.Contains(line, []byte(secret)) {
+				t.Fatalf("authorization secret %q appeared in request log", secret)
+			}
+		}
+		return
+	}
+
+	t.Fatalf("no structured request log found for request ID %q", requestID)
 }
 
 func authorizationRequestTarget(
@@ -1177,8 +1253,7 @@ func TestAuthorizationStateMachineRequiresMFAAndApplicationAccess(
 				)
 			}
 
-			const revokedState =
-				"revoked-session-state-0123456789"
+			const revokedState = "revoked-session-state-0123456789"
 
 			response := performRequest(
 				t,

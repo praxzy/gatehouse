@@ -20,12 +20,15 @@ import (
 	"github.com/praxzy/gatehouse/backend/internal/audit"
 	"github.com/praxzy/gatehouse/backend/internal/auth"
 	"github.com/praxzy/gatehouse/backend/internal/httpapi"
+	"github.com/praxzy/gatehouse/backend/internal/observability"
 	"github.com/praxzy/gatehouse/backend/internal/oidc"
 )
 
 const defaultHTTPAddress = ":8080"
 
 func main() {
+	slog.SetDefault(observability.NewJSONLogger(os.Stdout))
+
 	if err := run(); err != nil {
 		slog.Error("API stopped", "error", err)
 		os.Exit(1)
@@ -178,10 +181,19 @@ func run() error {
 		)
 	}
 
+	trustProxyHeaders, err := booleanEnvironment(
+		"TRUST_PROXY_HEADERS",
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
 	server := &http.Server{
 		Addr: address,
 		Handler: httpapi.NewRouter(
 			httpapi.Dependencies{
+				Logger:         slog.Default(),
 				Authentication: authentication,
 				Applications:   applications,
 				AuditExports:   exportService,
@@ -196,6 +208,7 @@ func run() error {
 				FederationManagement:    upstreamFederation.management,
 				CSRF:                    csrfProtector,
 				RateLimiters:            rateLimiters,
+				TrustProxyHeaders:       trustProxyHeaders,
 			},
 		),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -242,20 +255,31 @@ func run() error {
 }
 
 func sessionCookieSecure() (bool, error) {
-	value := os.Getenv("SESSION_COOKIE_SECURE")
+	return booleanEnvironment(
+		"SESSION_COOKIE_SECURE",
+		true,
+	)
+}
+
+func booleanEnvironment(
+	name string,
+	defaultValue bool,
+) (bool, error) {
+	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
-		return true, nil
+		return defaultValue, nil
 	}
 
-	secure, err := strconv.ParseBool(value)
+	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return false, fmt.Errorf(
-			"parse SESSION_COOKIE_SECURE: %w",
+			"parse %s: %w",
+			name,
 			err,
 		)
 	}
 
-	return secure, nil
+	return parsed, nil
 }
 
 func mfaSecretCipherFromEnvironment() (

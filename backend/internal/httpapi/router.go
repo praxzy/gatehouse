@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,6 +11,7 @@ import (
 )
 
 type Dependencies struct {
+	Logger                  *slog.Logger
 	Authentication          AuthenticationService
 	Applications            ApplicationService
 	AuditExports            AuditExportService
@@ -22,6 +24,7 @@ type Dependencies struct {
 	FederationManagement    FederationManagementService
 	CSRF                    *CSRFProtector
 	RateLimiters            RouteRateLimiters
+	TrustProxyHeaders       bool
 }
 
 type healthResponse struct {
@@ -31,7 +34,13 @@ type healthResponse struct {
 func NewRouter(dependencies Dependencies) http.Handler {
 	router := chi.NewRouter()
 	router.Use(securityHeaders)
+	router.Use(resolveClientAddress(
+		dependencies.TrustProxyHeaders,
+	))
 	router.Use(attachRequestID)
+	if dependencies.Logger != nil {
+		router.Use(requestLogger(dependencies.Logger))
+	}
 	if dependencies.CSRF != nil {
 		router.Use(dependencies.CSRF.CORS)
 	}
@@ -104,14 +113,22 @@ func NewRouter(dependencies Dependencies) http.Handler {
 	}
 
 	if dependencies.FederationAuthorization != nil {
-		router.Get(
+		router.With(
+			optionalRequestRateLimit(
+				dependencies.RateLimiters.Federation,
+			),
+		).Get(
 			"/api/v1/auth/federation/{tenantSlug}/start",
 			federationHandler.begin,
 		)
 	}
 
 	if dependencies.FederationCallback != nil {
-		router.Get(
+		router.With(
+			optionalRequestRateLimit(
+				dependencies.RateLimiters.Federation,
+			),
+		).Get(
 			"/api/v1/auth/federation/callback",
 			federationHandler.complete,
 		)
@@ -322,7 +339,11 @@ func NewRouter(dependencies Dependencies) http.Handler {
 				)
 			}
 
-			router.Post("/register", handler.register)
+			router.With(
+				optionalRequestRateLimit(
+					dependencies.RateLimiters.Registration,
+				),
+			).Post("/register", handler.register)
 			router.Post("/email/verify", handler.verifyEmail)
 			router.Post("/login", handler.login)
 

@@ -57,6 +57,13 @@ func requireSession(
 				session,
 			)
 
+			setRequestLogIdentity(
+				ctx,
+				formatUUID(session.TenantID),
+				formatUUID(session.UserID),
+				"",
+			)
+
 			next.ServeHTTP(
 				writer,
 				request.WithContext(ctx),

@@ -82,6 +82,13 @@ func (handler oidcHandler) authorize(
 		return
 	}
 
+	setRequestLogIdentity(
+		request.Context(),
+		formatUUID(authorization.TenantID),
+		"",
+		formatUUID(authorization.ApplicationID),
+	)
+
 	state, ok := authorizationQueryValue(
 		request.URL.Query(),
 		"state",
@@ -186,6 +193,13 @@ func (handler oidcHandler) advanceAuthorization(
 		)
 		return
 	}
+
+	setRequestLogIdentity(
+		request.Context(),
+		formatUUID(decision.Authorization.TenantID),
+		formatUUID(decision.Session.UserID),
+		formatUUID(decision.Authorization.ApplicationID),
+	)
 
 	continuation := authorizationContinuationTarget(
 		decision.Authorization.TransactionID,

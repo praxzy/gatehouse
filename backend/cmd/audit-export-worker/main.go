@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/praxzy/gatehouse/backend/internal/auditexport"
+	"github.com/praxzy/gatehouse/backend/internal/observability"
 	store "github.com/praxzy/gatehouse/backend/internal/store/db"
 )
 
@@ -27,6 +28,8 @@ const (
 )
 
 func main() {
+	slog.SetDefault(observability.NewJSONLogger(os.Stdout))
+
 	if err := run(); err != nil {
 		slog.Error("audit export worker stopped", "error", err)
 		os.Exit(1)

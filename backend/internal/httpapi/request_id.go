@@ -13,6 +13,11 @@ const requestIDHeader = "X-Request-ID"
 
 type requestIDContextKey struct{}
 
+func requestIDFromContext(ctx context.Context) string {
+	requestID, _ := ctx.Value(requestIDContextKey{}).(string)
+	return requestID
+}
+
 func attachRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(
 		writer http.ResponseWriter,
