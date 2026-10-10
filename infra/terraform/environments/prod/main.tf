@@ -87,3 +87,19 @@ module "ecs_runtime" {
 
   tags = var.additional_tags
 }
+
+module "observability" {
+  source = "../../modules/observability"
+
+  project_name = "gatehouse"
+  environment  = "prod"
+
+  monitor_api_service         = var.api_desired_count > 0
+  load_balancer_arn_suffix    = module.ecs_runtime.load_balancer_arn_suffix
+  api_target_group_arn_suffix = module.ecs_runtime.api_target_group_arn_suffix
+  database_identifier         = module.network_rds.database_identifier
+  dead_letter_queue_name      = module.audit_exports.dead_letter_queue_name
+  alarm_action_arns           = var.alarm_action_arns
+
+  tags = var.additional_tags
+}

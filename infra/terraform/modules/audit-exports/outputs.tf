@@ -18,6 +18,11 @@ output "dead_letter_queue_url" {
   value       = aws_sqs_queue.dead_letter.url
 }
 
+output "dead_letter_queue_name" {
+  description = "Name used as the CloudWatch QueueName dimension for the dead-letter queue."
+  value       = aws_sqs_queue.dead_letter.name
+}
+
 output "dead_letter_queue_arn" {
   description = "ARN of the audit export dead-letter queue."
   value       = aws_sqs_queue.dead_letter.arn

@@ -27,3 +27,8 @@ worker_desired_count = 0
 # replace bootstrap with an immutable release identifier or commit SHA
 api_image_tag    = "bootstrap"
 worker_image_tag = "bootstrap"
+
+# replace with the operations SNS topic before production deployment
+alarm_action_arns = [
+  "arn:aws:sns:ap-south-1:123456789012:gatehouse-prod-operations",
+]

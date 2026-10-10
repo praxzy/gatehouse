@@ -94,3 +94,10 @@ variable "worker_image_tag" {
   default     = "bootstrap"
   nullable    = false
 }
+
+variable "alarm_action_arns" {
+  description = "SNS topic or incident-action ARNs for CloudWatch alarms."
+  type        = set(string)
+  default     = []
+  nullable    = false
+}

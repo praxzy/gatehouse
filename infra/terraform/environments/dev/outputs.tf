@@ -97,3 +97,8 @@ output "runtime_secret_arns" {
   description = "Secrets Manager ARNs that must be populated outside Terraform."
   value       = module.ecs_runtime.runtime_secret_arns
 }
+
+output "cloudwatch_alarm_names" {
+  description = "CloudWatch alarms monitoring the development environment."
+  value       = module.observability.alarm_names
+}

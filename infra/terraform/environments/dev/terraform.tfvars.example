@@ -23,3 +23,6 @@ worker_desired_count = 0
 
 api_image_tag    = "bootstrap"
 worker_image_tag = "bootstrap"
+
+# add an SNS topic ARN when notifications are configured
+alarm_action_arns = []

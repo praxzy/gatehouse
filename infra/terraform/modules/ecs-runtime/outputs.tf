@@ -33,6 +33,11 @@ output "load_balancer_arn" {
   value       = aws_lb.this.arn
 }
 
+output "load_balancer_arn_suffix" {
+  description = "CloudWatch LoadBalancer dimension for the application load balancer."
+  value       = aws_lb.this.arn_suffix
+}
+
 output "load_balancer_dns_name" {
   description = "Public DNS name assigned to the application load balancer."
   value       = aws_lb.this.dns_name
@@ -41,6 +46,11 @@ output "load_balancer_dns_name" {
 output "api_target_group_arn" {
   description = "ARN of the API target group."
   value       = aws_lb_target_group.api.arn
+}
+
+output "api_target_group_arn_suffix" {
+  description = "CloudWatch TargetGroup dimension for the API target group."
+  value       = aws_lb_target_group.api.arn_suffix
 }
 
 output "api_log_group_name" {

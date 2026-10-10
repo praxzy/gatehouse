@@ -54,6 +54,11 @@ output "database_address" {
   value       = aws_db_instance.this.address
 }
 
+output "database_identifier" {
+  description = "RDS identifier used as the CloudWatch DBInstanceIdentifier dimension."
+  value       = aws_db_instance.this.identifier
+}
+
 output "database_port" {
   description = "PostgreSQL listener port."
   value       = aws_db_instance.this.port
