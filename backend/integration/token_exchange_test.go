@@ -556,6 +556,86 @@ func TestAuthorizationCodeTokenExchange(
 		)
 	})
 
+	t.Run("disabled application cannot redeem issued code", func(t *testing.T) {
+		code := issueTokenTestAuthorizationCode(
+			t,
+			router,
+			sessionCookie,
+			"token-disabled-app-state-0123456789",
+		)
+
+		if _, err := pool.Exec(
+			ctx,
+			`UPDATE applications SET status = 'disabled', updated_at = now() WHERE id = $1`,
+			applicationID,
+		); err != nil {
+			t.Fatalf("disable token application: %v", err)
+		}
+		defer func() {
+			if _, err := pool.Exec(
+				ctx,
+				`UPDATE applications SET status = 'active', updated_at = now() WHERE id = $1`,
+				applicationID,
+			); err != nil {
+				t.Errorf("restore token application: %v", err)
+			}
+		}()
+
+		response := performTokenExchange(
+			router,
+			tokenExchangeValues(code),
+			testAuthorizationClientID,
+			testTokenClientSecret,
+		)
+
+		requireOAuthTokenError(
+			t,
+			response,
+			http.StatusUnauthorized,
+			"invalid_client",
+		)
+	})
+
+	t.Run("disabled user cannot redeem issued code", func(t *testing.T) {
+		code := issueTokenTestAuthorizationCode(
+			t,
+			router,
+			sessionCookie,
+			"token-disabled-user-state-0123456789",
+		)
+
+		if _, err := pool.Exec(
+			ctx,
+			`UPDATE users SET status = 'disabled', updated_at = now() WHERE id = $1`,
+			registration.UserID,
+		); err != nil {
+			t.Fatalf("disable token user: %v", err)
+		}
+		defer func() {
+			if _, err := pool.Exec(
+				ctx,
+				`UPDATE users SET status = 'active', updated_at = now() WHERE id = $1`,
+				registration.UserID,
+			); err != nil {
+				t.Errorf("restore token user: %v", err)
+			}
+		}()
+
+		response := performTokenExchange(
+			router,
+			tokenExchangeValues(code),
+			testAuthorizationClientID,
+			testTokenClientSecret,
+		)
+
+		requireOAuthTokenError(
+			t,
+			response,
+			http.StatusBadRequest,
+			"invalid_grant",
+		)
+	})
+
 	t.Run("concurrent redemption succeeds exactly once", func(t *testing.T) {
 		code := issueTokenTestAuthorizationCode(
 			t,
@@ -712,7 +792,7 @@ func TestAuthorizationCodeTokenExchange(
 			      "failure_reason": "invalid_grant"
 			  }'::jsonb
 		`,
-		12,
+		13,
 		registration.TenantID,
 	)
 
@@ -732,7 +812,7 @@ func TestAuthorizationCodeTokenExchange(
 			      "failure_reason": "invalid_client"
 			  }'::jsonb
 		`,
-		1,
+		2,
 	)
 }
 
