@@ -61,8 +61,16 @@ resource "aws_ecs_task_definition" "api" {
           value = var.email_delivery_mode
         },
         {
+          name  = "ALLOW_INSECURE_EMAIL_LOGGING"
+          value = "false"
+        },
+        {
           name  = "SESSION_COOKIE_SECURE"
           value = tostring(var.certificate_arn != null)
+        },
+        {
+          name  = "TRUST_PROXY_HEADERS"
+          value = "true"
         },
         {
           name  = "MFA_ENCRYPTION_KEY_ID"

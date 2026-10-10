@@ -72,6 +72,7 @@ CSRF_HMAC_KEY_BASE64="$(openssl rand -base64 32 | tr -d '\n')"
 export ADMIN_ALLOWED_ORIGINS="http://localhost:5173"
 
 export EMAIL_DELIVERY_MODE="log"
+export ALLOW_INSECURE_EMAIL_LOGGING="true"
 export WEB_APP_URL="http://localhost:5173"
 
 export OIDC_ISSUER="http://localhost:5173"

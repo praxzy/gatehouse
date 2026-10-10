@@ -43,6 +43,19 @@ func deliveryWebAppURLFromEnvironment() (
 		)
 	}
 
+	allowInsecureLogging, err := booleanEnvironment(
+		"ALLOW_INSECURE_EMAIL_LOGGING",
+		false,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if !allowInsecureLogging {
+		return nil, errors.New(
+			"EMAIL_DELIVERY_MODE=log requires ALLOW_INSECURE_EMAIL_LOGGING=true and must not be used in production",
+		)
+	}
+
 	rawWebAppURL := strings.TrimSpace(
 		os.Getenv("WEB_APP_URL"),
 	)
