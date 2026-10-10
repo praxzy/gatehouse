@@ -142,6 +142,12 @@ func TestLoginCallbackCreatesLocalSession(t *testing.T) {
 			admin.Body.String(),
 		)
 	}
+	if admin.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf(
+			"authenticated page may be cached: %q",
+			admin.Header().Get("Cache-Control"),
+		)
+	}
 
 	localSession, ok := app.sessions.GetSession(localCookie.Value)
 	if !ok {
