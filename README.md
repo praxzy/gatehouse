@@ -1,6 +1,16 @@
-# Gatehouse
+<h1 align="center">Gatehouse</h1>
 
-Gatehouse is a multi-tenant identity provider and access-control platform. Organizations register applications, manage members, roles, and MFA, and delegate application login through an OpenID Connect Authorization Code + PKCE flow. Gatehouse evaluates access, issues a signed identity token, and records an audit trail of the decision.
+<p align="center">A multi-tenant identity provider and access-control platform.</p>
+
+<p align="center">
+  <a href="backend/go.mod"><img src="https://img.shields.io/badge/Go-1.26.4-00ADD8?logo=go&amp;logoColor=white" alt="Go 1.26.4" /></a>
+  <a href="web/package.json"><img src="https://img.shields.io/badge/React-19.2.8-61DAFB?logo=react&amp;logoColor=black" alt="React 19.2.8" /></a>
+  <a href="web/package.json"><img src="https://img.shields.io/badge/TypeScript-6.0.2-3178C6?logo=typescript&amp;logoColor=white" alt="TypeScript 6.0.2" /></a>
+</p>
+
+Organizations register applications, manage members, roles, and MFA, and delegate application login through an OpenID Connect Authorization Code + PKCE flow. Gatehouse evaluates access, issues a signed identity token, and records an audit trail of the decision.
+
+![Gatehouse administration dashboard](.github/gatehouse.png)
 
 ## Jump to
 
