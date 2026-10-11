@@ -10,16 +10,17 @@ import { currentUserQueryKey } from '@/auth/currentUser'
 
 export const membersQueryKey = ['members'] as const
 
-export function membersQueryOptions() {
+export function membersQueryOptions(enabled = true) {
   return queryOptions({
     queryKey: membersQueryKey,
     queryFn: ({ signal }) => getMembers(signal),
     staleTime: 10_000,
+    enabled,
   })
 }
 
-export function useMembers() {
-  return useQuery(membersQueryOptions())
+export function useMembers(enabled = true) {
+  return useQuery(membersQueryOptions(enabled))
 }
 
 export function useInviteMember() {

@@ -1,18 +1,24 @@
 import {
   AppWindow,
+  ArrowRight,
   ArrowUpRight,
   Check,
+  CircleAlert,
   Fingerprint,
   KeyRound,
-  ListChecks,
-  Network,
+  LockKeyhole,
   ShieldCheck,
+  UserCheck,
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
+import type { ApplicationListResponse } from '@/api/applications'
 import type { AuditEvent } from '@/api/audit'
+import type { CurrentUser } from '@/api/auth'
+import type { MemberListResponse } from '@/api/members'
+import type { RoleListResponse } from '@/api/roles'
+import { useApplications } from '@/applications/queries'
 import { useRecentAuditEvents } from '@/audit/queries'
 import { useCurrentUser } from '@/auth/currentUser'
 import { hasPermission, permissions } from '@/auth/permissions'
@@ -21,42 +27,22 @@ import { Spinner } from '@/components/ui/spinner'
 import { Surface } from '@/components/ui/surface'
 import { usePointerTilt } from '@/hooks/usePointerTilt'
 import { cn } from '@/lib/utils'
-
-const controlSurfaces = [
-  {
-    icon: Users,
-    number: '01',
-    title: 'Identity directory',
-    description: 'Users and memberships.',
-    tone: 'default',
-  },
-  {
-    icon: KeyRound,
-    number: '02',
-    title: 'Access control',
-    description: 'Roles and permissions.',
-    tone: 'primary',
-  },
-  {
-    icon: AppWindow,
-    number: '03',
-    title: 'Applications',
-    description: 'OIDC client configuration.',
-    tone: 'brass',
-  },
-] as const
-
-const controlSurfaceMotion = [
-  'motion-enter motion-enter-delay-3',
-  'motion-enter motion-enter-delay-4',
-  'motion-enter motion-enter-delay-5',
-] as const
+import { useMembers } from '@/members/queries'
+import { useRoles } from '@/roles/queries'
 
 export function DashboardPage() {
   const currentUser = useCurrentUser()
-  const canReadAudit = currentUser.data
-    ? hasPermission(currentUser.data.permissions, permissions.auditRead)
-    : false
+  const grantedPermissions = currentUser.data?.permissions ?? []
+  const canReadMembers = hasPermission(grantedPermissions, permissions.memberRead)
+  const canManageMembers = hasPermission(grantedPermissions, permissions.memberManage)
+  const canReadRoles = hasPermission(grantedPermissions, permissions.roleRead)
+  const canReadApplications = hasPermission(grantedPermissions, permissions.applicationRead)
+  const canManageApplications = hasPermission(grantedPermissions, permissions.applicationManage)
+  const canReadAudit = hasPermission(grantedPermissions, permissions.auditRead)
+
+  const members = useMembers(canReadMembers)
+  const roles = useRoles(canReadRoles)
+  const applications = useApplications(canReadApplications)
   const recentAudit = useRecentAuditEvents(canReadAudit)
 
   if (!currentUser.data) {
@@ -64,6 +50,7 @@ export function DashboardPage() {
   }
 
   const user = currentUser.data
+  const canReadWorkspace = canReadMembers || canReadRoles || canReadApplications
 
   return (
     <div className="mx-auto w-full max-w-[94rem] px-5 py-7 sm:px-7 lg:px-10 lg:py-9">
@@ -74,42 +61,36 @@ export function DashboardPage() {
           mfaEnrolled={user.mfa_enrolled}
         />
 
-        <SecurityPosture mfaEnrolled={user.mfa_enrolled} />
+        <AccountSecurity user={user} />
       </section>
 
-      <section className="mt-9">
-        <div className="motion-enter motion-enter-delay-2 mb-4 flex items-end justify-between">
-          <div>
-            <h2 className="mt-1 font-heading text-2xl font-medium tracking-tight">
-              Administration
-            </h2>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-12">
-          {controlSurfaces.map((surface, index) => (
-            <ControlSurface
-              key={surface.title}
-              {...surface}
-              className={cn(
-                index === 0 ? 'md:col-span-5' : index === 1 ? 'md:col-span-4' : 'md:col-span-3',
-                controlSurfaceMotion[index],
-              )}
-            />
-          ))}
-        </div>
-      </section>
-
-      {canReadAudit ? (
-        <section className="mt-9 grid gap-5 xl:grid-cols-[minmax(0,1fr)_23rem]">
-          <BoundaryActivity audit={recentAudit} />
-          <OrganizationSetup mfaEnrolled={user.mfa_enrolled} />
-        </section>
-      ) : (
-        <section className="mt-9 max-w-md">
-          <OrganizationSetup mfaEnrolled={user.mfa_enrolled} />
-        </section>
+      {canReadWorkspace && (
+        <WorkspaceOverview
+          members={members}
+          roles={roles}
+          applications={applications}
+          canReadMembers={canReadMembers}
+          canReadRoles={canReadRoles}
+          canReadApplications={canReadApplications}
+        />
       )}
+
+      <section
+        className={cn('mt-9 grid gap-5', canReadAudit && 'xl:grid-cols-[minmax(0,1fr)_23rem]')}
+      >
+        {canReadAudit && <BoundaryActivity audit={recentAudit} />}
+
+        <div className={cn(canReadAudit && 'relative xl:self-stretch')}>
+          <AttentionPanel
+            user={user}
+            members={members.data}
+            applications={applications.data}
+            canManageMembers={canManageMembers}
+            canManageApplications={canManageApplications}
+            constrainToActivity={canReadAudit}
+          />
+        </div>
+      </section>
     </div>
   )
 }
@@ -205,49 +186,47 @@ function BoundaryFact({
   )
 }
 
-function SecurityPosture({ mfaEnrolled }: { mfaEnrolled: boolean }) {
-  const enabledControls = mfaEnrolled ? 3 : 2
-  const score = Math.round((enabledControls / 3) * 100)
-
+function AccountSecurity({ user }: { user: CurrentUser }) {
   return (
     <Surface className="motion-enter motion-enter-delay-1 flex flex-col p-6">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
+          <p className="font-mono text-[0.64rem] tracking-[0.13em] text-muted-foreground uppercase">
+            Your account
+          </p>
           <h2 className="mt-2 font-heading text-2xl font-medium tracking-[-0.025em]">
-            Security posture
+            Session security
           </h2>
         </div>
 
-        <SecurityScore score={score} enabled={enabledControls} />
+        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+          <ShieldCheck size={18} aria-hidden="true" />
+        </div>
       </div>
 
-      <div className="mt-7 divide-y divide-border">
-        <SecurityControl
-          icon={Network}
-          title="Tenant isolation"
-          description="Tenant-scoped access."
-          active
+      <dl className="mt-6 divide-y divide-border border-y border-border">
+        <AccountFact
+          icon={LockKeyhole}
+          label="Signed in with"
+          value={authenticationLabel(user.authentication_level)}
         />
-
-        <SecurityControl
-          icon={ShieldCheck}
-          title="Sessions"
-          description="Server-side revocation."
-          active
-        />
-
-        <SecurityControl
+        <AccountFact
           icon={Fingerprint}
-          title="Administrator MFA"
-          description={mfaEnrolled ? 'Enabled for your account.' : 'Not enabled.'}
-          active={mfaEnrolled}
+          label="Multi-factor authentication"
+          value={user.mfa_enrolled ? 'Enabled' : 'Not enabled'}
+          attention={!user.mfa_enrolled}
         />
-      </div>
+        <AccountFact
+          icon={UserCheck}
+          label="Session expires"
+          value={formatSessionExpiry(user.session_expires_at)}
+        />
+      </dl>
 
-      {!mfaEnrolled && (
+      {!user.mfa_enrolled && (
         <Link
           to="/mfa/enroll"
-          className="mt-auto flex items-center justify-between border-t border-border pt-5 text-sm font-semibold text-primary"
+          className="mt-auto flex items-center justify-between pt-5 text-sm font-semibold text-primary"
         >
           Set up MFA
           <ArrowUpRight size={16} aria-hidden="true" />
@@ -257,119 +236,158 @@ function SecurityPosture({ mfaEnrolled }: { mfaEnrolled: boolean }) {
   )
 }
 
-function SecurityScore({ score, enabled }: { score: number; enabled: number }) {
-  return (
-    <div
-      className="relative grid size-16 place-items-center"
-      aria-label={`${enabled} of 3 security controls active`}
-    >
-      <svg viewBox="0 0 44 44" className="absolute inset-0 size-full -rotate-90" aria-hidden="true">
-        <circle
-          cx="22"
-          cy="22"
-          r="18"
-          pathLength="100"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          className="text-muted"
-        />
-        <circle
-          cx="22"
-          cy="22"
-          r="18"
-          pathLength="100"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeDasharray="100"
-          className="motion-score-ring text-primary"
-          style={
-            {
-              '--score-offset': 100 - score,
-            } as CSSProperties
-          }
-        />
-      </svg>
-
-      <div className="text-center">
-        <p className="text-sm leading-none font-bold">{enabled}/3</p>
-        <p className="mt-1 text-[0.55rem] font-semibold tracking-wide text-muted-foreground uppercase">
-          Active
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function SecurityControl({
+function AccountFact({
   icon: Icon,
-  title,
-  description,
-  active,
+  label,
+  value,
+  attention = false,
 }: {
   icon: LucideIcon
-  title: string
-  description: string
-  active: boolean
+  label: string
+  value: string
+  attention?: boolean
 }) {
   return (
-    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 py-4 first:pt-0 last:pb-0">
-      <div className="grid size-8 place-items-center rounded-md bg-muted text-foreground">
+    <div className="grid grid-cols-[auto_1fr] gap-3 py-4">
+      <div className="grid size-8 place-items-center rounded-lg bg-muted text-muted-foreground">
         <Icon size={15} aria-hidden="true" />
       </div>
-
-      <div>
-        <p className="text-sm font-semibold">{title}</p>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
+      <div className="min-w-0">
+        <dt className="text-xs text-muted-foreground">{label}</dt>
+        <dd className={cn('mt-1 text-sm font-semibold', attention && 'text-gatehouse-brass')}>
+          {value}
+        </dd>
       </div>
-
-      <span
-        className={
-          active
-            ? 'grid size-5 place-items-center rounded-full bg-primary/10 text-primary'
-            : 'size-2 rounded-full bg-gatehouse-brass'
-        }
-      >
-        {active && <Check size={12} aria-hidden="true" />}
-      </span>
     </div>
   )
 }
 
-type ControlSurfaceProps = {
-  icon: LucideIcon
-  number: string
-  title: string
-  description: string
-  tone: 'default' | 'primary' | 'brass'
-  className?: string
+function WorkspaceOverview({
+  members,
+  roles,
+  applications,
+  canReadMembers,
+  canReadRoles,
+  canReadApplications,
+}: {
+  members: ReturnType<typeof useMembers>
+  roles: ReturnType<typeof useRoles>
+  applications: ReturnType<typeof useApplications>
+  canReadMembers: boolean
+  canReadRoles: boolean
+  canReadApplications: boolean
+}) {
+  const visibleCards = [canReadMembers, canReadRoles, canReadApplications].filter(Boolean).length
+
+  return (
+    <section className="mt-9" aria-labelledby="workspace-overview-heading">
+      <div className="motion-enter motion-enter-delay-2 mb-4">
+        <h2
+          id="workspace-overview-heading"
+          className="font-heading text-2xl font-medium tracking-tight"
+        >
+          Workspace at a glance
+        </h2>
+      </div>
+
+      <div
+        className={cn(
+          'grid gap-4',
+          visibleCards === 2 && 'md:grid-cols-2',
+          visibleCards === 3 && 'md:grid-cols-3',
+        )}
+      >
+        {canReadMembers && (
+          <ResourceSummaryCard
+            icon={Users}
+            label="Members"
+            href="/app/members"
+            query={members}
+            value={members.data?.members.filter((member) => member.status === 'active').length}
+            detail={memberSummary(members.data)}
+            className="motion-enter motion-enter-delay-3"
+          />
+        )}
+
+        {canReadRoles && (
+          <ResourceSummaryCard
+            icon={KeyRound}
+            label="Roles"
+            href="/app/roles"
+            query={roles}
+            value={roles.data?.roles.length}
+            detail={roleSummary(roles.data)}
+            className="motion-enter motion-enter-delay-4"
+          />
+        )}
+
+        {canReadApplications && (
+          <ResourceSummaryCard
+            icon={AppWindow}
+            label="Applications"
+            href="/app/applications"
+            query={applications}
+            value={applications.data?.applications.length}
+            detail={applicationSummary(applications.data)}
+            className="motion-enter motion-enter-delay-5"
+          />
+        )}
+      </div>
+    </section>
+  )
 }
 
-function ControlSurface({
+function ResourceSummaryCard({
   icon: Icon,
-  number,
-  title,
-  description,
-  tone,
-  className = '',
-}: ControlSurfaceProps) {
+  label,
+  href,
+  query,
+  value,
+  detail,
+  className,
+}: {
+  icon: LucideIcon
+  label: string
+  href: string
+  query: { isPending: boolean; isError: boolean }
+  value?: number
+  detail: string
+  className?: string
+}) {
   return (
-    <Surface tone={tone} className={cn('min-h-48 p-5', className)}>
-      <span className="absolute top-4 right-4 font-mono text-[0.65rem] text-muted-foreground/55">
-        {number}
-      </span>
+    <Link to={href} className={cn('group block rounded-xl outline-none', className)}>
+      <Surface className="flex min-h-44 flex-col p-5 transition-colors [transition-duration:var(--motion-duration-standard)] [transition-timing-function:var(--motion-ease-standard)] group-hover:border-primary/25 group-hover:bg-primary/[0.025] group-focus-visible:border-primary/25 group-focus-visible:bg-primary/[0.025] group-focus-visible:ring-3 group-focus-visible:ring-ring/30 motion-reduce:transition-none">
+        <div className="flex items-center justify-between">
+          <div className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
+            <Icon size={18} aria-hidden="true" />
+          </div>
+          <ArrowUpRight
+            size={16}
+            className="text-muted-foreground transition-colors [transition-duration:var(--motion-duration-standard)] [transition-timing-function:var(--motion-ease-standard)] group-hover:text-foreground motion-reduce:transition-none"
+            aria-hidden="true"
+          />
+        </div>
 
-      <div className="grid size-10 place-items-center rounded-md border border-current/10 bg-background/60 text-primary">
-        <Icon size={18} aria-hidden="true" />
-      </div>
-
-      <div className="mt-8">
-        <h3 className="font-heading text-xl font-medium tracking-[-0.02em]">{title}</h3>
-        <p className="mt-2 max-w-xs text-xs leading-5 text-muted-foreground">{description}</p>
-      </div>
-    </Surface>
+        <div className="mt-auto pt-6">
+          <p className="text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+            {label}
+          </p>
+          {query.isPending ? (
+            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner />
+              Loading
+            </div>
+          ) : query.isError ? (
+            <p className="mt-3 text-sm font-medium text-destructive">Unavailable</p>
+          ) : (
+            <div className="mt-2 flex items-end justify-between gap-4">
+              <p className="font-heading text-4xl leading-none font-medium">{value ?? 0}</p>
+              <p className="text-right text-xs leading-5 text-muted-foreground">{detail}</p>
+            </div>
+          )}
+        </div>
+      </Surface>
+    </Link>
   )
 }
 
@@ -377,7 +395,10 @@ function BoundaryActivity({ audit }: { audit: ReturnType<typeof useRecentAuditEv
   return (
     <Surface className="motion-enter motion-enter-delay-4">
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <h2 className="text-sm font-semibold">Recent activity</h2>
+        <div>
+          <p className="text-sm font-semibold">Recent activity</p>
+          <p className="mt-1 text-xs text-muted-foreground">Latest identity and access events</p>
+        </div>
         <Link
           to="/app/audit"
           className="flex items-center gap-1 text-xs font-semibold text-primary"
@@ -404,14 +425,22 @@ function BoundaryActivity({ audit }: { audit: ReturnType<typeof useRecentAuditEv
         </div>
       ) : audit.data.events.length === 0 ? (
         <div className="grid min-h-56 place-items-center px-6 py-10 text-center">
-          <p className="text-sm text-muted-foreground">No activity yet.</p>
+          <div>
+            <p className="text-sm font-medium">No activity yet</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Security events will appear here as your organization uses Gatehouse.
+            </p>
+          </div>
         </div>
       ) : (
         <ul className="divide-y divide-border px-5">
           {audit.data.events.map((event) => (
             <li key={event.event_id} className="flex items-start justify-between gap-4 py-4">
               <div className="min-w-0">
-                <p className="text-sm font-medium">{activityLabel(event)}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium">{activityLabel(event)}</p>
+                  <OutcomeBadge outcome={event.outcome} />
+                </div>
                 <p className="mt-1 truncate text-xs text-muted-foreground">
                   {event.actor_display_name ||
                     event.actor_email ||
@@ -419,8 +448,12 @@ function BoundaryActivity({ audit }: { audit: ReturnType<typeof useRecentAuditEv
                     event.actor_kind}
                 </p>
               </div>
-              <time dateTime={event.occurred_at} className="shrink-0 text-xs text-muted-foreground">
-                {new Date(event.occurred_at).toLocaleDateString()}
+              <time
+                dateTime={event.occurred_at}
+                title={new Date(event.occurred_at).toLocaleString()}
+                className="shrink-0 text-xs text-muted-foreground"
+              >
+                {formatActivityTime(event.occurred_at)}
               </time>
             </li>
           ))}
@@ -430,69 +463,228 @@ function BoundaryActivity({ audit }: { audit: ReturnType<typeof useRecentAuditEv
   )
 }
 
+function OutcomeBadge({ outcome }: { outcome: AuditEvent['outcome'] }) {
+  return (
+    <span
+      className={cn(
+        'rounded-full px-2 py-0.5 text-[0.6rem] font-semibold capitalize',
+        outcome === 'success' && 'bg-primary/8 text-primary',
+        outcome === 'denied' && 'bg-gatehouse-brass/12 text-gatehouse-brass',
+        outcome === 'failure' && 'bg-destructive/10 text-destructive',
+      )}
+    >
+      {outcome}
+    </span>
+  )
+}
+
 function activityLabel(event: AuditEvent) {
   const label = event.event_type.replaceAll(/[._]/g, ' ')
   return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
-function OrganizationSetup({ mfaEnrolled }: { mfaEnrolled: boolean }) {
+type AttentionItem = {
+  id: string
+  title: string
+  description: string
+  href: string
+  action: string
+}
+
+function AttentionPanel({
+  user,
+  members,
+  applications,
+  canManageMembers,
+  canManageApplications,
+  constrainToActivity,
+}: {
+  user: CurrentUser
+  members?: MemberListResponse
+  applications?: ApplicationListResponse
+  canManageMembers: boolean
+  canManageApplications: boolean
+  constrainToActivity: boolean
+}) {
+  const items = attentionItems({
+    user,
+    members,
+    applications,
+    canManageMembers,
+    canManageApplications,
+  })
+
   return (
-    <Surface className="motion-enter motion-enter-delay-5 p-5">
+    <Surface
+      className={cn(
+        'motion-enter motion-enter-delay-5 self-start p-5',
+        constrainToActivity && 'xl:absolute xl:inset-x-0 xl:top-0 xl:max-h-full xl:overflow-y-auto',
+      )}
+    >
       <div className="flex items-center gap-3">
-        <div className="grid size-9 place-items-center rounded-md bg-primary/10 text-primary">
-          <ListChecks size={17} aria-hidden="true" />
+        <div
+          className={cn(
+            'grid size-9 place-items-center rounded-lg',
+            items.length === 0
+              ? 'bg-primary/10 text-primary'
+              : 'bg-gatehouse-brass/12 text-gatehouse-brass',
+          )}
+        >
+          {items.length === 0 ? (
+            <Check size={17} aria-hidden="true" />
+          ) : (
+            <CircleAlert size={17} aria-hidden="true" />
+          )}
         </div>
 
         <div>
-          <p className="text-sm font-semibold">Organization setup</p>
+          <p className="text-sm font-semibold">Needs your attention</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {items.length === 0 ? 'No action needed right now' : itemCountLabel(items.length)}
+          </p>
         </div>
       </div>
 
-      <ol className="mt-6 space-y-5">
-        <SetupStep number="01" title="Organization created" complete />
-        <SetupStep number="02" title="Administrator account" complete />
-        <SetupStep number="03" title="MFA enrollment" complete={mfaEnrolled} />
-        <SetupStep number="04" title="First OIDC application" complete={false} final />
-      </ol>
+      {items.length === 0 ? (
+        <div className="mt-6 rounded-xl border border-primary/15 bg-primary/[0.045] p-4">
+          <p className="text-sm font-medium">Everything visible to you looks in order.</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Gatehouse will surface account and access-policy actions here.
+          </p>
+        </div>
+      ) : (
+        <ul className="mt-5 divide-y divide-border">
+          {items.map((item) => (
+            <li key={item.id} className="py-4 first:pt-0 last:pb-0">
+              <p className="text-sm font-semibold">{item.title}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
+              <Link
+                to={item.href}
+                className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary"
+              >
+                {item.action}
+                <ArrowRight size={13} aria-hidden="true" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </Surface>
   )
 }
 
-function SetupStep({
-  number,
-  title,
-  complete,
-  final = false,
+function attentionItems({
+  user,
+  members,
+  applications,
+  canManageMembers,
+  canManageApplications,
 }: {
-  number: string
-  title: string
-  complete: boolean
-  final?: boolean
+  user: CurrentUser
+  members?: MemberListResponse
+  applications?: ApplicationListResponse
+  canManageMembers: boolean
+  canManageApplications: boolean
 }) {
-  return (
-    <li className="relative grid grid-cols-[auto_1fr_auto] items-center gap-3">
-      {!final && (
-        <span className="absolute top-6 left-[0.7rem] h-5 w-px bg-border" aria-hidden="true" />
-      )}
+  const items: AttentionItem[] = []
 
-      <span
-        className={[
-          'relative z-10 grid size-6 place-items-center rounded-full text-[0.58rem] font-bold',
-          complete
-            ? 'bg-primary text-primary-foreground'
-            : 'border border-border bg-background text-muted-foreground',
-        ].join(' ')}
-      >
-        {complete ? <Check size={12} aria-hidden="true" /> : number}
-      </span>
+  if (!user.mfa_enrolled) {
+    items.push({
+      id: 'mfa',
+      title: 'Protect your account with MFA',
+      description: 'Add a second factor before performing more administrative work.',
+      href: '/mfa/enroll',
+      action: 'Set up MFA',
+    })
+  }
 
-      <span className={complete ? 'text-sm font-medium' : 'text-sm text-muted-foreground'}>
-        {title}
-      </span>
+  if (canManageMembers && members && members.invitations.length > 0) {
+    items.push({
+      id: 'invitations',
+      title: `${members.invitations.length} pending ${members.invitations.length === 1 ? 'invitation' : 'invitations'}`,
+      description: 'Review outstanding invitations and their expiration dates.',
+      href: '/app/members',
+      action: 'Review invitations',
+    })
+  }
 
-      <span className="text-[0.62rem] font-semibold tracking-wide text-muted-foreground uppercase">
-        {complete ? 'Complete' : 'Next'}
-      </span>
-    </li>
-  )
+  if (canManageApplications && applications) {
+    if (applications.applications.length === 0) {
+      items.push({
+        id: 'first-application',
+        title: 'Register your first application',
+        description: 'Create an OIDC client to start using Gatehouse for sign-in.',
+        href: '/app/applications',
+        action: 'Register application',
+      })
+    } else {
+      const applicationsWithoutRoles = applications.applications.filter(
+        (application) =>
+          application.status === 'active' &&
+          application.access_mode === 'allowed_roles' &&
+          application.allowed_role_count === 0,
+      ).length
+
+      if (applicationsWithoutRoles > 0) {
+        items.push({
+          id: 'application-policies',
+          title: `${applicationsWithoutRoles} ${applicationsWithoutRoles === 1 ? 'application has' : 'applications have'} no allowed roles`,
+          description: 'No member can sign in until an allowed role is added to the access policy.',
+          href: '/app/applications',
+          action: 'Review access policies',
+        })
+      }
+    }
+  }
+
+  return items
+}
+
+function memberSummary(data?: MemberListResponse) {
+  if (!data) return ''
+
+  const pending = data.invitations.length
+  return pending === 0
+    ? 'No pending invites'
+    : `${pending} pending ${pending === 1 ? 'invite' : 'invites'}`
+}
+
+function roleSummary(data?: RoleListResponse) {
+  if (!data) return ''
+
+  const custom = data.roles.filter((role) => !role.is_system).length
+  return `${custom} custom ${custom === 1 ? 'role' : 'roles'}`
+}
+
+function applicationSummary(data?: ApplicationListResponse) {
+  if (!data) return ''
+
+  const active = data.applications.filter((application) => application.status === 'active').length
+  return `${active} active`
+}
+
+function itemCountLabel(count: number) {
+  return `${count} ${count === 1 ? 'item' : 'items'} to review`
+}
+
+function authenticationLabel(level: CurrentUser['authentication_level']) {
+  if (level === 'mfa') return 'Password and MFA'
+  if (level === 'upstream') return 'Upstream identity provider'
+  return 'Password'
+}
+
+function formatSessionExpiry(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function formatActivityTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value))
 }

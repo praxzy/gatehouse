@@ -15,11 +15,12 @@ export function applicationQueryKey(applicationId: string) {
   return [...applicationsQueryKey, applicationId] as const
 }
 
-export function applicationsQueryOptions() {
+export function applicationsQueryOptions(enabled = true) {
   return queryOptions({
     queryKey: applicationsQueryKey,
     queryFn: ({ signal }) => getApplications(signal),
     staleTime: 10_000,
+    enabled,
   })
 }
 
@@ -32,8 +33,8 @@ export function applicationQueryOptions(applicationId: string) {
   })
 }
 
-export function useApplications() {
-  return useQuery(applicationsQueryOptions())
+export function useApplications(enabled = true) {
+  return useQuery(applicationsQueryOptions(enabled))
 }
 
 export function useApplication(applicationId: string) {
